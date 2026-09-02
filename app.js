@@ -3,17 +3,27 @@
    JavaScript vanilla + localStorage
    ========================================================= */
 
-/* Cambia estos dos valores si usas otra moneda (ej. "es-CO" / "COP") */
-const LOCALE = "es-MX";
-const MONEDA = "MXN";
+/* Moneda. Para Venezuela: "es-VE" / "VES". Para México: "es-MX" / "MXN" */
+const LOCALE = "es-BO";
+const MONEDA = "BOB";
 
-const CLAVE_STORAGE = "cotizaciones";
+/* Semáforo de la meta: verde desde 100%, ámbar desde 70%, rojo abajo */
+const META_VERDE = 100;
+const META_AMBAR = 70;
+
+/* La clave de localStorage y la capa de guardado viven en almacen.js */
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
                "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
-/* Lista de registros en memoria */
-let registros = cargar();
+/* Lista de registros en memoria (se llena al iniciar) */
+let registros = [];
+
+/* Metas por periodo: { "2026-09": 150000 } */
+let metas = {};
+
+const NOMBRES_MES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 /* ---------- Elementos del DOM ---------- */
 const tbody = document.getElementById("tbody");
@@ -33,19 +43,100 @@ const campoVenta = document.getElementById("venta");
 const campoCobro = document.getElementById("cobro");
 
 /* =========================================================
-   localStorage
+   Guardado
+
+   Las operaciones se delegan a Almacen (ver almacen.js), que
+   usa SQLite en la app de escritorio y localStorage en el
+   navegador. Si algo falla, se muestra el aviso amarillo.
    ========================================================= */
-function cargar() {
-  try {
-    const datos = JSON.parse(localStorage.getItem(CLAVE_STORAGE));
-    return Array.isArray(datos) ? datos : [];
-  } catch (e) {
-    return [];
-  }
+function alFallar(e) {
+  console.error("No se pudo guardar:", e);
+  mostrarAviso();
 }
 
-function guardar() {
-  localStorage.setItem(CLAVE_STORAGE, JSON.stringify(registros));
+function mostrarAviso() {
+  const aviso = document.getElementById("avisoStorage");
+  if (aviso) aviso.hidden = false;
+}
+
+/* Muestra en el pie de página dónde se están guardando los datos */
+function mostrarInfoAlmacen() {
+  Almacen.info().then(function (info) {
+    const pie = document.getElementById("infoAlmacen");
+    if (pie) pie.textContent = info.descripcion;
+  });
+}
+
+/* =========================================================
+   Exportar / importar copia de seguridad (archivo .json)
+   ========================================================= */
+function exportar() {
+  if (registros.length === 0) {
+    alert("No hay registros que exportar.");
+    return;
+  }
+
+  const contenido = JSON.stringify(registros, null, 2);
+  const blob = new Blob([contenido], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const hoy = new Date();
+  const nombre = "cotizaciones-" +
+    hoy.getFullYear() + "-" +
+    String(hoy.getMonth() + 1).padStart(2, "0") + "-" +
+    String(hoy.getDate()).padStart(2, "0") + ".json";
+
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = nombre;
+  document.body.appendChild(enlace);
+  enlace.click();
+  document.body.removeChild(enlace);
+  URL.revokeObjectURL(url);
+}
+
+function importar(archivo) {
+  const lector = new FileReader();
+
+  lector.onload = function () {
+    let datos;
+    try {
+      datos = JSON.parse(lector.result);
+    } catch (e) {
+      alert("El archivo no es un JSON válido.");
+      return;
+    }
+
+    if (!Array.isArray(datos)) {
+      alert("El archivo no tiene el formato esperado.");
+      return;
+    }
+
+    const mensaje = "Se van a cargar " + datos.length + " registros y se " +
+      "reemplazarán los " + registros.length + " actuales.\n\n¿Continuar?";
+    if (!confirm(mensaje)) return;
+
+    /* Normaliza los registros por si el archivo viene incompleto */
+    registros = datos.map(function (r, i) {
+      return {
+        id: String(r.id || Date.now() + i),
+        nombre: String(r.nombre || ""),
+        empresa: String(r.empresa || ""),
+        monto: Number(r.monto) || 0,
+        fecha: r.fecha || new Date().toISOString(),
+        venta: !!r.venta,
+        cobro: !!r.cobro
+      };
+    });
+
+    Almacen.reemplazar(registros).then(function () {
+      llenarAnios();
+      render();
+      alert("Se importaron " + registros.length + " registros.");
+    }).catch(alFallar);
+  };
+
+  lector.readAsText(archivo);
 }
 
 /* =========================================================
@@ -189,8 +280,230 @@ function render() {
 
   /* --- Métricas y paneles --- */
   renderMetricas(lista.length, numVentas, cotizado, ventas, cobrado);
+  renderMeta(ventas);
+  renderEmpresas(lista);
   renderGrafica();
   renderRanking(lista);
+  renderListaEmpresas();
+}
+
+/* =========================================================
+   Meta de venta
+
+   La meta es global y mensual. El periodo se toma de los
+   filtros de arriba: si hay un mes concreto seleccionado se
+   captura la meta de ese mes; si está en "Todos" se muestra
+   la suma de las metas del rango, pero no se puede editar
+   (no tendría sentido escribir una suma).
+   ========================================================= */
+function periodoSeleccionado() {
+  const mes = filtroMes.value;
+  const anio = filtroAnio.value;
+
+  if (mes === "todos" || anio === "todos") return null;
+  return anio + "-" + String(Number(mes) + 1).padStart(2, "0");
+}
+
+/* Suma las metas que caen dentro del filtro actual */
+function metaDelFiltro() {
+  const periodo = periodoSeleccionado();
+  if (periodo) return Number(metas[periodo]) || 0;
+
+  const mes = filtroMes.value;
+  const anio = filtroAnio.value;
+  let total = 0;
+
+  Object.keys(metas).forEach(function (clave) {
+    const partes = clave.split("-");
+    if (anio !== "todos" && partes[0] !== anio) return;
+    if (mes !== "todos" && Number(partes[1]) !== Number(mes) + 1) return;
+    total += Number(metas[clave]) || 0;
+  });
+
+  return total;
+}
+
+/* Devuelve "verde", "ambar" o "rojo" según el avance */
+function nivelSemaforo(avance) {
+  if (avance >= META_VERDE) return "verde";
+  if (avance >= META_AMBAR) return "ambar";
+  return "rojo";
+}
+
+function renderMeta(vendido) {
+  const periodo = periodoSeleccionado();
+  const meta = metaDelFiltro();
+  const campo = document.getElementById("metaMonto");
+  const boton = document.getElementById("btnGuardarMeta");
+  const ayuda = document.getElementById("metaAyuda");
+
+  /* Título del periodo */
+  const mes = filtroMes.value;
+  const anio = filtroAnio.value;
+  let titulo;
+  if (periodo) titulo = NOMBRES_MES[Number(mes)] + " " + anio;
+  else if (anio !== "todos") titulo = "Año " + anio;
+  else titulo = "Todos los periodos";
+  document.getElementById("metaPeriodo").textContent = titulo;
+
+  /* Solo se puede capturar con un mes y un año concretos */
+  if (periodo) {
+    campo.disabled = false;
+    boton.disabled = false;
+    if (document.activeElement !== campo) {
+      campo.value = meta > 0 ? meta : "";
+    }
+    ayuda.textContent = "Meta de " + titulo + ". Deja el campo vacío para quitarla.";
+  } else {
+    campo.disabled = true;
+    boton.disabled = true;
+    campo.value = "";
+    ayuda.textContent = "Elige un mes y un año concretos arriba para capturar la meta.";
+  }
+
+  const avance = meta > 0 ? (vendido / meta) * 100 : 0;
+  const nivel = nivelSemaforo(avance);
+
+  document.getElementById("metaVendido").textContent = moneda(vendido);
+  document.getElementById("metaObjetivo").textContent = moneda(meta);
+
+  const porcentaje = document.getElementById("metaPorcentaje");
+  porcentaje.textContent = meta > 0 ? Math.round(avance) + "%" : "—";
+  porcentaje.className = "metrica-value" + (meta > 0 ? " " + nivel : "");
+
+  const barra = document.getElementById("metaBarra");
+  barra.style.width = Math.min(avance, 100).toFixed(1) + "%";
+  barra.className = "meta-relleno" + (meta > 0 ? " " + nivel : "");
+
+  const estado = document.getElementById("metaEstado");
+  if (meta <= 0) {
+    estado.textContent = "Sin meta capturada para este periodo.";
+    estado.className = "meta-estado";
+  } else if (vendido >= meta) {
+    estado.textContent = "Meta alcanzada. Superada por " + moneda(vendido - meta) + ".";
+    estado.className = "meta-estado verde";
+  } else {
+    estado.textContent = "Faltan " + moneda(meta - vendido) + " para la meta.";
+    estado.className = "meta-estado " + nivel;
+  }
+}
+
+document.getElementById("btnGuardarMeta").addEventListener("click", function () {
+  const periodo = periodoSeleccionado();
+  if (!periodo) return;
+
+  const monto = Number(document.getElementById("metaMonto").value) || 0;
+
+  Almacen.guardarMeta(periodo, monto).then(function () {
+    if (monto > 0) metas[periodo] = monto;
+    else delete metas[periodo];
+    render();
+  }).catch(alFallar);
+});
+
+/* =========================================================
+   Métricas por empresa
+
+   Una fila por empresa, para poder compararlas. Respeta el
+   buscador y los filtros de mes y año igual que todo lo demás.
+   ========================================================= */
+function renderEmpresas(lista) {
+  document.getElementById("empresasPeriodo").textContent =
+    document.getElementById("metaPeriodo").textContent;
+
+  const meta = metaDelFiltro();
+  const porEmpresa = {};
+
+  lista.forEach(function (r) {
+    const nombre = (r.empresa || "(Sin empresa)").trim();
+    if (!porEmpresa[nombre]) {
+      porEmpresa[nombre] = {
+        nombre: nombre, num: 0, numVentas: 0,
+        cotizado: 0, vendido: 0, cobrado: 0, pendiente: 0
+      };
+    }
+
+    const e = porEmpresa[nombre];
+    const monto = Number(r.monto) || 0;
+
+    e.num++;
+    e.cotizado += monto;
+    if (r.venta) {
+      e.numVentas++;
+      e.vendido += monto;
+      if (r.cobro) e.cobrado += monto;
+      else e.pendiente += monto;
+    }
+  });
+
+  /* De mayor a menor monto vendido */
+  const empresas = Object.keys(porEmpresa)
+    .map(function (n) { return porEmpresa[n]; })
+    .sort(function (a, b) { return b.vendido - a.vendido; });
+
+  const cuerpo = document.getElementById("tbodyEmpresas");
+  const pie = document.getElementById("tfootEmpresas");
+
+  document.getElementById("empresasVacio").hidden = empresas.length > 0;
+
+  cuerpo.innerHTML = empresas.map(function (e) {
+    const conversion = porcentaje(e.numVentas, e.num);
+    const aporte = meta > 0 ? (e.vendido / meta) * 100 : 0;
+
+    return '' +
+      '<tr>' +
+        '<td class="empresa-nombre">' + escapar(e.nombre) + '</td>' +
+        '<td class="num">' + e.num + '</td>' +
+        '<td class="num">' + moneda(e.cotizado) + '</td>' +
+        '<td class="num">' + moneda(e.vendido) + '</td>' +
+        '<td class="num">' + moneda(e.cobrado) + '</td>' +
+        '<td class="num">' + moneda(e.pendiente) + '</td>' +
+        '<td class="num">' + conversion + '%</td>' +
+        '<td class="num">' + (meta > 0 ? Math.round(aporte) + "%" : "—") + '</td>' +
+      '</tr>';
+  }).join("");
+
+  /* Fila de totales: aquí sí aplica el semáforo, porque la
+     meta es global y la persiguen todas las empresas juntas */
+  const tot = empresas.reduce(function (a, e) {
+    return {
+      num: a.num + e.num,
+      numVentas: a.numVentas + e.numVentas,
+      cotizado: a.cotizado + e.cotizado,
+      vendido: a.vendido + e.vendido,
+      cobrado: a.cobrado + e.cobrado,
+      pendiente: a.pendiente + e.pendiente
+    };
+  }, { num: 0, numVentas: 0, cotizado: 0, vendido: 0, cobrado: 0, pendiente: 0 });
+
+  const avanceTotal = meta > 0 ? (tot.vendido / meta) * 100 : 0;
+  const claseTotal = meta > 0 ? " celda-semaforo " + nivelSemaforo(avanceTotal) : "";
+
+  pie.innerHTML = empresas.length === 0 ? "" : '' +
+    '<tr>' +
+      '<td>TOTAL (' + empresas.length + (empresas.length === 1 ? " empresa)" : " empresas)") + '</td>' +
+      '<td class="num">' + tot.num + '</td>' +
+      '<td class="num">' + moneda(tot.cotizado) + '</td>' +
+      '<td class="num">' + moneda(tot.vendido) + '</td>' +
+      '<td class="num">' + moneda(tot.cobrado) + '</td>' +
+      '<td class="num">' + moneda(tot.pendiente) + '</td>' +
+      '<td class="num">' + porcentaje(tot.numVentas, tot.num) + '%</td>' +
+      '<td class="num' + claseTotal + '">' +
+        (meta > 0 ? Math.round(avanceTotal) + "%" : "—") +
+      '</td>' +
+    '</tr>';
+}
+
+/* Sugerencias de empresa en el formulario, para no crear
+   duplicados por escribir el nombre distinto cada vez */
+function renderListaEmpresas() {
+  const nombres = Array.from(new Set(registros.map(function (r) {
+    return (r.empresa || "").trim();
+  }).filter(Boolean))).sort();
+
+  document.getElementById("listaEmpresas").innerHTML = nombres.map(function (n) {
+    return '<option value="' + escapar(n) + '"></option>';
+  }).join("");
 }
 
 /* =========================================================
@@ -360,18 +673,24 @@ formulario.addEventListener("submit", function (e) {
     cobro: campoCobro.checked
   };
 
+  let operacion;
+
   if (id) {
     /* Editar: se conserva la fecha original */
     const registro = registros.find(function (r) { return r.id === id; });
-    if (registro) Object.assign(registro, datos);
+    if (!registro) return;
+    Object.assign(registro, datos);
+    operacion = Almacen.actualizar(registro);
   } else {
     /* Nuevo: la fecha y hora se generan automaticamente */
     datos.id = String(Date.now());
     datos.fecha = new Date().toISOString();
     registros.push(datos);
+    operacion = Almacen.crear(datos);
   }
 
-  guardar();
+  operacion.catch(alFallar);
+
   llenarAnios();
   render();
   cerrarModal();
@@ -412,7 +731,7 @@ tbody.addEventListener("click", function (e) {
     if (!registro) return;
     if (confirm('¿Eliminar "' + registro.nombre + '"? Esta acción no se puede deshacer.')) {
       registros = registros.filter(function (r) { return r.id !== id; });
-      guardar();
+      Almacen.eliminar(id).catch(alFallar);
       llenarAnios();
       render();
     }
@@ -428,7 +747,7 @@ tbody.addEventListener("change", function (e) {
   if (!registro) return;
 
   registro[check.dataset.campo] = check.checked;
-  guardar();
+  Almacen.actualizar(registro).catch(alFallar);
   render();
 });
 
@@ -437,8 +756,70 @@ buscador.addEventListener("input", render);
 filtroMes.addEventListener("change", render);
 filtroAnio.addEventListener("change", render);
 
+/* Exportar / importar */
+document.getElementById("btnExportar").addEventListener("click", exportar);
+
+const archivoImportar = document.getElementById("archivoImportar");
+
+document.getElementById("btnImportar").addEventListener("click", function () {
+  archivoImportar.click();
+});
+
+archivoImportar.addEventListener("change", function () {
+  if (archivoImportar.files.length > 0) importar(archivoImportar.files[0]);
+  /* Se limpia para poder volver a elegir el mismo archivo */
+  archivoImportar.value = "";
+});
+
+/* =========================================================
+   Recargar
+
+   Vuelve a leer los datos guardados. Sirve cuando varias
+   personas usan la misma base (por ejemplo en una máquina
+   virtual compartida) y otra capturó algo mientras tanto.
+   ========================================================= */
+function recargar() {
+  /* No se recarga con el formulario abierto para no perder
+     lo que la persona esté escribiendo */
+  if (!modal.hidden) return Promise.resolve();
+
+  return Promise.all([Almacen.listar(), Almacen.leerMetas()]).then(function (r) {
+    registros = r[0];
+    metas = r[1] || {};
+    llenarAnios();
+    render();
+  }).catch(function (e) {
+    console.error("No se pudieron recargar los datos:", e);
+  });
+}
+
+document.getElementById("btnRecargar").addEventListener("click", function () {
+  recargar();
+});
+
+/* Al volver a la ventana se refrescan los datos por si
+   cambiaron mientras estaba en segundo plano */
+window.addEventListener("focus", recargar);
+
 /* =========================================================
    Inicio
    ========================================================= */
-llenarAnios();
-render();
+function iniciar() {
+  Almacen.disponible().then(function (ok) {
+    if (!ok) mostrarAviso();
+    return Promise.all([Almacen.listar(), Almacen.leerMetas()]);
+  }).then(function (r) {
+    registros = r[0];
+    metas = r[1] || {};
+    llenarAnios();
+    render();
+    mostrarInfoAlmacen();
+  }).catch(function (e) {
+    console.error("No se pudieron cargar los datos:", e);
+    mostrarAviso();
+    llenarAnios();
+    render();
+  });
+}
+
+iniciar();

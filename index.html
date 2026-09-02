@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
   <title>Dashboard de Cotizaciones y Proyectos</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -11,11 +13,24 @@
   <header class="topbar">
     <div class="container topbar-inner">
       <h1>Cotizaciones y Proyectos</h1>
-      <button id="btnNueva" class="btn btn-primary">+ Nueva cotización</button>
+      <div class="topbar-acciones">
+        <button id="btnRecargar" class="btn" title="Vuelve a leer los datos guardados">Actualizar</button>
+        <button id="btnExportar" class="btn">Exportar copia</button>
+        <button id="btnImportar" class="btn">Importar copia</button>
+        <button id="btnNueva" class="btn btn-primary">+ Nueva cotización</button>
+      </div>
+      <input type="file" id="archivoImportar" accept="application/json,.json" hidden>
     </div>
   </header>
 
   <main class="container">
+
+    <!-- Aviso si el navegador no permite guardar -->
+    <div class="aviso" id="avisoStorage" hidden>
+      <strong>Este navegador no está guardando los datos.</strong>
+      Lo que registres se perderá al cerrar la página. Usa <em>Exportar copia</em>
+      para no perder tu información y revisa la nota del README.
+    </div>
 
     <!-- Tarjetas del dashboard -->
     <section class="cards" id="cards">
@@ -74,6 +89,46 @@
       </div>
     </section>
 
+    <!-- Meta del mes -->
+    <section class="panel meta" id="panelMeta">
+      <div class="panel-head">
+        <h2>Meta de venta</h2>
+        <span class="panel-sub" id="metaPeriodo"></span>
+      </div>
+
+      <div class="meta-cuerpo">
+        <div class="meta-captura">
+          <label for="metaMonto">Monto de la meta</label>
+          <div class="meta-fila">
+            <input type="number" id="metaMonto" min="0" step="0.01" placeholder="0.00">
+            <button class="btn" id="btnGuardarMeta">Guardar</button>
+          </div>
+          <span class="meta-ayuda" id="metaAyuda"></span>
+        </div>
+
+        <div class="meta-avance">
+          <div class="meta-numeros">
+            <div>
+              <span class="metrica-label">Vendido</span>
+              <strong class="metrica-value" id="metaVendido">Bs 0,00</strong>
+            </div>
+            <div>
+              <span class="metrica-label">Meta</span>
+              <strong class="metrica-value" id="metaObjetivo">Bs 0,00</strong>
+            </div>
+            <div>
+              <span class="metrica-label">Avance</span>
+              <strong class="metrica-value" id="metaPorcentaje">0%</strong>
+            </div>
+          </div>
+          <div class="meta-pista">
+            <div class="meta-relleno" id="metaBarra"></div>
+          </div>
+          <span class="meta-estado" id="metaEstado"></span>
+        </div>
+      </div>
+    </section>
+
     <!-- Métricas -->
     <section class="metricas">
       <div class="metrica">
@@ -123,6 +178,33 @@
 
     </section>
 
+    <!-- Comparativa por empresa -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Métricas por empresa</h2>
+        <span class="panel-sub" id="empresasPeriodo"></span>
+      </div>
+      <div class="tabla-scroll">
+        <table class="tabla tabla-empresas">
+          <thead>
+            <tr>
+              <th>Empresa</th>
+              <th class="num">Cotizaciones</th>
+              <th class="num">Cotizado</th>
+              <th class="num">Vendido</th>
+              <th class="num">Cobrado</th>
+              <th class="num">Pendiente</th>
+              <th class="num">Conversión</th>
+              <th class="num">Aporte a la meta</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyEmpresas"></tbody>
+          <tfoot id="tfootEmpresas"></tfoot>
+        </table>
+      </div>
+      <p class="panel-vacio" id="empresasVacio" hidden>Sin datos para mostrar.</p>
+    </section>
+
     <!-- Tabla -->
     <section class="tabla-wrap">
       <table class="tabla">
@@ -155,7 +237,9 @@
         <input type="text" id="nombre" required placeholder="Ej. Proyecto página web">
 
         <label for="empresa">Empresa</label>
-        <input type="text" id="empresa" required placeholder="Ej. Comercial ABC">
+        <input type="text" id="empresa" required placeholder="Ej. SIRT"
+               list="listaEmpresas" autocomplete="off">
+        <datalist id="listaEmpresas"></datalist>
 
         <label for="monto">Precio cotizado</label>
         <input type="number" id="monto" required min="0" step="0.01" placeholder="0.00">
@@ -173,6 +257,13 @@
     </div>
   </div>
 
+  <footer class="pie">
+    <div class="container">
+      <span id="infoAlmacen"></span>
+    </div>
+  </footer>
+
+  <script src="almacen.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

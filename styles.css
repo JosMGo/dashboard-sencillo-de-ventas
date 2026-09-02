@@ -51,6 +51,25 @@ body {
   font-weight: 600;
 }
 
+.topbar-acciones {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---------- Aviso ---------- */
+.aviso {
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  color: #78350f;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 18px;
+  font-size: 14px;
+}
+
+.aviso[hidden] { display: none !important; }
+
 /* ---------- Botones ---------- */
 .btn {
   padding: 9px 16px;
@@ -348,6 +367,112 @@ input:focus, select:focus {
   margin: 0;
 }
 
+/* ---------- Meta y semáforo ---------- */
+:root {
+  --verde-fondo: #dcfce7;
+  --verde-texto: #15803d;
+  --verde-barra: #16a34a;
+  --ambar-fondo: #fef3c7;
+  --ambar-texto: #b45309;
+  --ambar-barra: #f59e0b;
+  --rojo-fondo: #fee2e2;
+  --rojo-texto: #b91c1c;
+  --rojo-barra: #dc2626;
+}
+
+.meta { margin-bottom: 18px; }
+
+.meta-cuerpo {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.meta-captura label {
+  display: block;
+  font-size: 13px;
+  color: var(--texto-suave);
+  margin-bottom: 5px;
+}
+
+.meta-fila { display: flex; gap: 8px; }
+.meta-fila input { flex: 1; }
+
+.meta-ayuda {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--texto-suave);
+}
+
+.meta-numeros {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.meta-numeros > div { display: flex; flex-direction: column; gap: 2px; }
+
+.meta-pista {
+  height: 12px;
+  background: #eef0f4;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.meta-relleno {
+  height: 100%;
+  width: 0;
+  border-radius: 6px;
+  background: var(--texto-suave);
+}
+
+.meta-estado {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Los tres niveles del semáforo */
+.verde  { color: var(--verde-texto); }
+.ambar  { color: var(--ambar-texto); }
+.rojo   { color: var(--rojo-texto); }
+
+.meta-relleno.verde { background: var(--verde-barra); }
+.meta-relleno.ambar { background: var(--ambar-barra); }
+.meta-relleno.rojo  { background: var(--rojo-barra); }
+
+.meta-estado.verde { background: var(--verde-fondo); color: var(--verde-texto); }
+.meta-estado.ambar { background: var(--ambar-fondo); color: var(--ambar-texto); }
+.meta-estado.rojo  { background: var(--rojo-fondo);  color: var(--rojo-texto); }
+
+.celda-semaforo { font-weight: 600; }
+.celda-semaforo.verde { color: var(--verde-texto); }
+.celda-semaforo.ambar { color: var(--ambar-texto); }
+.celda-semaforo.rojo  { color: var(--rojo-texto); }
+
+/* ---------- Comparativa por empresa ---------- */
+.tabla-scroll { overflow-x: auto; }
+
+.tabla-empresas { min-width: 900px; }
+
+.tabla-empresas th,
+.tabla-empresas td { padding: 10px 12px; }
+
+.tabla-empresas tfoot td {
+  border-top: 2px solid var(--borde);
+  border-bottom: none;
+  font-weight: 600;
+  background: #fafbfc;
+}
+
+.empresa-nombre { font-weight: 500; }
+
 /* ---------- Tabla ---------- */
 .tabla-wrap {
   background: var(--blanco);
@@ -401,6 +526,15 @@ input:focus, select:focus {
   text-align: center;
   color: var(--texto-suave);
   margin: 0;
+}
+
+/* ---------- Pie de página ---------- */
+.pie {
+  border-top: 1px solid var(--borde);
+  background: var(--blanco);
+  padding: 14px 0;
+  font-size: 12px;
+  color: var(--texto-suave);
 }
 
 /* ---------- Modal ---------- */
@@ -472,6 +606,7 @@ input:focus, select:focus {
   .cards { grid-template-columns: repeat(2, 1fr); }
   .metricas { grid-template-columns: repeat(2, 1fr); }
   .paneles { grid-template-columns: 1fr; }
+  .meta-cuerpo { grid-template-columns: 1fr; gap: 18px; }
 }
 
 @media (max-width: 520px) {
@@ -481,6 +616,7 @@ input:focus, select:focus {
   .g-mes { min-width: 22px; }
   .topbar-inner { flex-direction: column; align-items: stretch; }
   .topbar h1 { font-size: 18px; }
+  .topbar-acciones { flex-direction: column; }
   .btn { width: 100%; }
   .modal-acciones .btn { width: auto; }
   .filtro { flex: 1 1 100%; }
