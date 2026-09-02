@@ -60,11 +60,6 @@ const AlmacenLocal = {
     return Promise.resolve();
   },
 
-  reemplazar: function (lista) {
-    this.escribirTodo(lista);
-    return Promise.resolve();
-  },
-
   /* Metas: un objeto { "2026-09": 150000, "2026-10": 180000 } */
   leerMetas: function () {
     return Promise.resolve((function () {
@@ -78,7 +73,6 @@ const AlmacenLocal = {
   },
 
   guardarMeta: function (periodo, monto) {
-    const self = this;
     return this.leerMetas().then(function (metas) {
       if (monto > 0) metas[periodo] = monto;
       else delete metas[periodo];
@@ -127,10 +121,6 @@ const AlmacenSQLite = {
 
   eliminar: function (id) {
     return window.api.eliminar(id);
-  },
-
-  reemplazar: function (lista) {
-    return window.api.reemplazar(lista);
   },
 
   leerMetas: function () {

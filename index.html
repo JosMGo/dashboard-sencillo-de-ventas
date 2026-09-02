@@ -13,13 +13,7 @@
   <header class="topbar">
     <div class="container topbar-inner">
       <h1>Cotizaciones y Proyectos</h1>
-      <div class="topbar-acciones">
-        <button id="btnRecargar" class="btn" title="Vuelve a leer los datos guardados">Actualizar</button>
-        <button id="btnExportar" class="btn">Exportar copia</button>
-        <button id="btnImportar" class="btn">Importar copia</button>
-        <button id="btnNueva" class="btn btn-primary">+ Nueva cotización</button>
-      </div>
-      <input type="file" id="archivoImportar" accept="application/json,.json" hidden>
+      <button id="btnNueva" class="btn btn-primary">+ Nueva cotización</button>
     </div>
   </header>
 
@@ -28,8 +22,8 @@
     <!-- Aviso si el navegador no permite guardar -->
     <div class="aviso" id="avisoStorage" hidden>
       <strong>Este navegador no está guardando los datos.</strong>
-      Lo que registres se perderá al cerrar la página. Usa <em>Exportar copia</em>
-      para no perder tu información y revisa la nota del README.
+      Lo que registres se perderá al cerrar la página. Revisa la nota del README
+      antes de seguir capturando.
     </div>
 
     <!-- Tarjetas del dashboard -->
@@ -100,7 +94,7 @@
         <div class="meta-captura">
           <label for="metaMonto">Monto de la meta</label>
           <div class="meta-fila">
-            <input type="number" id="metaMonto" min="0" step="0.01" placeholder="0.00">
+            <input type="number" id="metaMonto" min="0" step="0.01" placeholder="80000.00">
             <button class="btn" id="btnGuardarMeta">Guardar</button>
           </div>
           <span class="meta-ayuda" id="metaAyuda"></span>

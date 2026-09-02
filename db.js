@@ -104,25 +104,6 @@ function eliminar(id) {
   db.prepare("DELETE FROM registros WHERE id = ?").run(String(id));
 }
 
-/* Se usa al importar una copia: borra todo y vuelve a insertar.
-   Si algo falla a la mitad, se deshace todo (ROLLBACK). */
-function reemplazar(lista) {
-  const insertar = db.prepare(
-    "INSERT INTO registros (id, nombre, empresa, monto, fecha, venta, cobro) " +
-    "VALUES (:id, :nombre, :empresa, :monto, :fecha, :venta, :cobro)"
-  );
-
-  db.exec("BEGIN");
-  try {
-    db.prepare("DELETE FROM registros").run();
-    lista.forEach(function (r) { insertar.run(aFila(r)); });
-    db.exec("COMMIT");
-  } catch (e) {
-    db.exec("ROLLBACK");
-    throw e;
-  }
-}
-
 /* ---------------------------------------------------------
    Metas
    --------------------------------------------------------- */
@@ -163,7 +144,6 @@ module.exports = {
   crear: crear,
   actualizar: actualizar,
   eliminar: eliminar,
-  reemplazar: reemplazar,
   leerMetas: leerMetas,
   guardarMeta: guardarMeta,
   info: info,

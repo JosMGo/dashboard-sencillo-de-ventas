@@ -118,10 +118,6 @@ ipcMain.handle("eliminar", function (evento, id) {
   db.eliminar(id);
 });
 
-ipcMain.handle("reemplazar", function (evento, lista) {
-  db.reemplazar(lista);
-});
-
 ipcMain.handle("leerMetas", function () {
   return db.leerMetas();
 });

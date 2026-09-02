@@ -51,12 +51,6 @@ body {
   font-weight: 600;
 }
 
-.topbar-acciones {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 /* ---------- Aviso ---------- */
 .aviso {
   background: #fef3c7;
@@ -616,7 +610,6 @@ input:focus, select:focus {
   .g-mes { min-width: 22px; }
   .topbar-inner { flex-direction: column; align-items: stretch; }
   .topbar h1 { font-size: 18px; }
-  .topbar-acciones { flex-direction: column; }
   .btn { width: 100%; }
   .modal-acciones .btn { width: auto; }
   .filtro { flex: 1 1 100%; }

@@ -21,9 +21,6 @@ contextBridge.exposeInMainWorld("api", {
   eliminar: function (id) {
     return ipcRenderer.invoke("eliminar", id);
   },
-  reemplazar: function (lista) {
-    return ipcRenderer.invoke("reemplazar", lista);
-  },
   leerMetas: function () {
     return ipcRenderer.invoke("leerMetas");
   },

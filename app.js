@@ -67,77 +67,6 @@ function mostrarInfoAlmacen() {
   });
 }
 
-/* =========================================================
-   Exportar / importar copia de seguridad (archivo .json)
-   ========================================================= */
-function exportar() {
-  if (registros.length === 0) {
-    alert("No hay registros que exportar.");
-    return;
-  }
-
-  const contenido = JSON.stringify(registros, null, 2);
-  const blob = new Blob([contenido], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-
-  const hoy = new Date();
-  const nombre = "cotizaciones-" +
-    hoy.getFullYear() + "-" +
-    String(hoy.getMonth() + 1).padStart(2, "0") + "-" +
-    String(hoy.getDate()).padStart(2, "0") + ".json";
-
-  const enlace = document.createElement("a");
-  enlace.href = url;
-  enlace.download = nombre;
-  document.body.appendChild(enlace);
-  enlace.click();
-  document.body.removeChild(enlace);
-  URL.revokeObjectURL(url);
-}
-
-function importar(archivo) {
-  const lector = new FileReader();
-
-  lector.onload = function () {
-    let datos;
-    try {
-      datos = JSON.parse(lector.result);
-    } catch (e) {
-      alert("El archivo no es un JSON válido.");
-      return;
-    }
-
-    if (!Array.isArray(datos)) {
-      alert("El archivo no tiene el formato esperado.");
-      return;
-    }
-
-    const mensaje = "Se van a cargar " + datos.length + " registros y se " +
-      "reemplazarán los " + registros.length + " actuales.\n\n¿Continuar?";
-    if (!confirm(mensaje)) return;
-
-    /* Normaliza los registros por si el archivo viene incompleto */
-    registros = datos.map(function (r, i) {
-      return {
-        id: String(r.id || Date.now() + i),
-        nombre: String(r.nombre || ""),
-        empresa: String(r.empresa || ""),
-        monto: Number(r.monto) || 0,
-        fecha: r.fecha || new Date().toISOString(),
-        venta: !!r.venta,
-        cobro: !!r.cobro
-      };
-    });
-
-    Almacen.reemplazar(registros).then(function () {
-      llenarAnios();
-      render();
-      alert("Se importaron " + registros.length + " registros.");
-    }).catch(alFallar);
-  };
-
-  lector.readAsText(archivo);
-}
 
 /* =========================================================
    Utilidades
@@ -756,54 +685,26 @@ buscador.addEventListener("input", render);
 filtroMes.addEventListener("change", render);
 filtroAnio.addEventListener("change", render);
 
-/* Exportar / importar */
-document.getElementById("btnExportar").addEventListener("click", exportar);
-
-const archivoImportar = document.getElementById("archivoImportar");
-
-document.getElementById("btnImportar").addEventListener("click", function () {
-  archivoImportar.click();
-});
-
-archivoImportar.addEventListener("change", function () {
-  if (archivoImportar.files.length > 0) importar(archivoImportar.files[0]);
-  /* Se limpia para poder volver a elegir el mismo archivo */
-  archivoImportar.value = "";
-});
-
-/* =========================================================
-   Recargar
-
-   Vuelve a leer los datos guardados. Sirve cuando varias
-   personas usan la misma base (por ejemplo en una máquina
-   virtual compartida) y otra capturó algo mientras tanto.
-   ========================================================= */
-function recargar() {
-  /* No se recarga con el formulario abierto para no perder
-     lo que la persona esté escribiendo */
-  if (!modal.hidden) return Promise.resolve();
-
-  return Promise.all([Almacen.listar(), Almacen.leerMetas()]).then(function (r) {
-    registros = r[0];
-    metas = r[1] || {};
-    llenarAnios();
-    render();
-  }).catch(function (e) {
-    console.error("No se pudieron recargar los datos:", e);
-  });
-}
-
-document.getElementById("btnRecargar").addEventListener("click", function () {
-  recargar();
-});
-
-/* Al volver a la ventana se refrescan los datos por si
-   cambiaron mientras estaba en segundo plano */
-window.addEventListener("focus", recargar);
-
 /* =========================================================
    Inicio
    ========================================================= */
+/* Al abrir, el dashboard se sitúa en el mes en curso.
+
+   Además de ser lo más útil, hace que el campo de la meta esté
+   listo para escribir desde el primer momento: la meta solo se
+   puede capturar con un mes y un año concretos. */
+function situarseEnMesActual() {
+  const hoy = new Date();
+  const anio = String(hoy.getFullYear());
+
+  filtroMes.value = String(hoy.getMonth());
+
+  const existe = Array.prototype.some.call(filtroAnio.options, function (o) {
+    return o.value === anio;
+  });
+  if (existe) filtroAnio.value = anio;
+}
+
 function iniciar() {
   Almacen.disponible().then(function (ok) {
     if (!ok) mostrarAviso();
@@ -812,6 +713,7 @@ function iniciar() {
     registros = r[0];
     metas = r[1] || {};
     llenarAnios();
+    situarseEnMesActual();
     render();
     mostrarInfoAlmacen();
   }).catch(function (e) {
