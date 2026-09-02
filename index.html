@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard de Cotizaciones y Proyectos</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <h1>Cotizaciones y Proyectos</h1>
+      <button id="btnNueva" class="btn btn-primary">+ Nueva cotización</button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Tarjetas del dashboard -->
+    <section class="cards" id="cards">
+      <div class="card">
+        <span class="card-label">Total de proyectos</span>
+        <strong class="card-value" id="statTotal">0</strong>
+      </div>
+      <div class="card">
+        <span class="card-label">Total cotizado</span>
+        <strong class="card-value" id="statCotizado">$0.00</strong>
+      </div>
+      <div class="card">
+        <span class="card-label">Ventas realizadas</span>
+        <strong class="card-value" id="statVentas">$0.00</strong>
+        <span class="card-note" id="statVentasNota">0 ventas</span>
+      </div>
+      <div class="card">
+        <span class="card-label">Total cobrado</span>
+        <strong class="card-value ok" id="statCobrado">$0.00</strong>
+      </div>
+      <div class="card">
+        <span class="card-label">Pendiente de cobro</span>
+        <strong class="card-value warn" id="statPendiente">$0.00</strong>
+      </div>
+    </section>
+
+    <!-- Filtros -->
+    <section class="filtros">
+      <div class="filtro filtro-buscar">
+        <label for="buscador">Buscar</label>
+        <input type="search" id="buscador" placeholder="Empresa o proyecto...">
+      </div>
+      <div class="filtro">
+        <label for="filtroMes">Mes</label>
+        <select id="filtroMes">
+          <option value="todos">Todos</option>
+          <option value="0">Enero</option>
+          <option value="1">Febrero</option>
+          <option value="2">Marzo</option>
+          <option value="3">Abril</option>
+          <option value="4">Mayo</option>
+          <option value="5">Junio</option>
+          <option value="6">Julio</option>
+          <option value="7">Agosto</option>
+          <option value="8">Septiembre</option>
+          <option value="9">Octubre</option>
+          <option value="10">Noviembre</option>
+          <option value="11">Diciembre</option>
+        </select>
+      </div>
+      <div class="filtro">
+        <label for="filtroAnio">Año</label>
+        <select id="filtroAnio">
+          <option value="todos">Todos</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- Métricas -->
+    <section class="metricas">
+      <div class="metrica">
+        <span class="metrica-label">Tasa de conversión</span>
+        <strong class="metrica-value" id="mConversion">0%</strong>
+        <span class="metrica-note" id="mConversionNota">0 de 0 cotizaciones</span>
+      </div>
+      <div class="metrica">
+        <span class="metrica-label">Ticket promedio cotizado</span>
+        <strong class="metrica-value" id="mTicket">$0.00</strong>
+        <span class="metrica-note">Promedio por cotización</span>
+      </div>
+      <div class="metrica">
+        <span class="metrica-label">Ticket promedio vendido</span>
+        <strong class="metrica-value" id="mTicketVenta">$0.00</strong>
+        <span class="metrica-note">Promedio por venta cerrada</span>
+      </div>
+      <div class="metrica">
+        <span class="metrica-label">Avance de cobro</span>
+        <strong class="metrica-value" id="mCobro">0%</strong>
+        <span class="metrica-note" id="mCobroNota">Cobrado sobre lo vendido</span>
+      </div>
+    </section>
+
+    <!-- Paneles: gráfica y ranking -->
+    <section class="paneles">
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Cotizado vs. vendido por mes</h2>
+          <span class="panel-sub" id="panelAnio"></span>
+        </div>
+        <div class="grafica" id="grafica"></div>
+        <div class="leyenda">
+          <span><i class="punto cotizado"></i> Cotizado</span>
+          <span><i class="punto vendido"></i> Vendido</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Top empresas</h2>
+          <span class="panel-sub">Por monto cotizado</span>
+        </div>
+        <ul class="ranking" id="ranking"></ul>
+      </div>
+
+    </section>
+
+    <!-- Tabla -->
+    <section class="tabla-wrap">
+      <table class="tabla">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Cotización / Proyecto</th>
+            <th>Empresa</th>
+            <th class="num">Se cotizó</th>
+            <th class="center">Venta</th>
+            <th class="center">Se cobró</th>
+            <th class="center">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <p class="vacio" id="vacio" hidden>No hay registros para mostrar.</p>
+    </section>
+
+  </main>
+
+  <!-- Formulario (modal) -->
+  <div class="modal" id="modal" hidden>
+    <div class="modal-caja">
+      <h2 id="modalTitulo">Nueva cotización</h2>
+      <form id="formulario">
+        <input type="hidden" id="registroId">
+
+        <label for="nombre">Cotización / Proyecto</label>
+        <input type="text" id="nombre" required placeholder="Ej. Proyecto página web">
+
+        <label for="empresa">Empresa</label>
+        <input type="text" id="empresa" required placeholder="Ej. Comercial ABC">
+
+        <label for="monto">Precio cotizado</label>
+        <input type="number" id="monto" required min="0" step="0.01" placeholder="0.00">
+
+        <div class="check-fila">
+          <label class="check"><input type="checkbox" id="venta"> Venta realizada</label>
+          <label class="check"><input type="checkbox" id="cobro"> Cobrado</label>
+        </div>
+
+        <div class="modal-acciones">
+          <button type="button" class="btn" id="btnCancelar">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
