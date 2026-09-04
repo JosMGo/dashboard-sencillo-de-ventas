@@ -134,6 +134,20 @@ function exigirSesion(req, res, next) {
   next();
 }
 
+/* Administrar cuentas y leer la bitácora son tareas de quien
+   administra. La pantalla ya esconde lo que no aplica, pero
+   esconder no es impedir: quien escriba la dirección a mano
+   choca aquí. */
+function exigirAdmin(req, res, next) {
+  if (!req.sesion) {
+    return res.status(401).json({ error: "Sesión no iniciada" });
+  }
+  if (req.sesion.rol !== "admin") {
+    return res.status(403).json({ error: "Solo la administración puede hacer esto." });
+  }
+  next();
+}
+
 /* =========================================================
    Validación
 
@@ -208,7 +222,11 @@ function validarPeriodo(periodo) {
 const PUBLICOS = {
   "/login.html": ["login.html", "text/html; charset=utf-8"],
   "/login.js": ["login.js", "text/javascript; charset=utf-8"],
-  "/styles.css": ["styles.css", "text/css; charset=utf-8"]
+  "/styles.css": ["styles.css", "text/css; charset=utf-8"],
+  /* Lo cargan la pantalla de acceso y la de cuentas. Va aquí
+     porque la primera se ve sin haber entrado, y el archivo no
+     contiene nada que valga la pena esconder. */
+  "/ojo.js": ["ojo.js", "text/javascript; charset=utf-8"]
 };
 
 const PRIVADOS = {
@@ -216,6 +234,14 @@ const PRIVADOS = {
   "/app.js": ["app.js", "text/javascript; charset=utf-8"],
   "/almacen.js": ["almacen.js", "text/javascript; charset=utf-8"],
   "/sesion.js": ["sesion.js", "text/javascript; charset=utf-8"]
+};
+
+/* La pantalla de cuentas. No basta con tener sesión: hay que
+   ser admin. Va aparte de PRIVADOS porque la respuesta cuando
+   falta permiso es distinta. */
+const SOLO_ADMIN = {
+  "/admin.html": ["admin.html", "text/html; charset=utf-8"],
+  "/admin.js": ["admin.js", "text/javascript; charset=utf-8"]
 };
 
 function entregar(res, entrada) {
@@ -260,6 +286,27 @@ Object.keys(PRIVADOS).forEach(function (ruta) {
       return res.status(401).type("text/plain").send("Sesión no iniciada");
     }
     entregar(res, PRIVADOS[ruta]);
+  });
+});
+
+Object.keys(SOLO_ADMIN).forEach(function (ruta) {
+  const esPagina = ruta === "/admin.html";
+
+  app.get(ruta, function (req, res) {
+    if (!req.sesion) {
+      if (esPagina) return res.redirect("/login.html");
+      return res.status(401).type("text/plain").send("Sesión no iniciada");
+    }
+
+    /* A quien no administra se le devuelve al dashboard en vez de
+       enseñarle un error: no hizo nada malo, esa pantalla
+       simplemente no es suya */
+    if (req.sesion.rol !== "admin") {
+      if (esPagina) return res.redirect("/index.html");
+      return res.status(403).type("text/plain").send("Solo la administración");
+    }
+
+    entregar(res, SOLO_ADMIN[ruta]);
   });
 });
 
@@ -414,11 +461,205 @@ app.get("/api/info", exigirSesion, function (req, res) {
   });
 });
 
-/* La bitácora solo la ve quien administra */
-app.get("/api/bitacora", exigirSesion, function (req, res) {
-  if (req.sesion.rol !== "admin") {
-    return res.status(403).json({ error: "Solo la administración puede ver la bitácora." });
+/* =========================================================
+   Cuentas
+
+   Hace lo mismo que usuarios.js desde la consola, y las dos
+   vías comparten las reglas de auth.js: una cuenta creada
+   aquí queda idéntica a una creada allá.
+
+   Dos barreras sostienen esto. Ninguna es un capricho: sin
+   ellas un clic puede dejar el sistema sin forma de volver a
+   entrar salvo abriendo la consola del servidor.
+
+     1. Nadie se modifica a sí mismo. Bajarse el rol o darse
+        de baja es la forma más rápida de quedarse fuera, y
+        además es lo que garantiza que siempre sobreviva al
+        menos un administrador: quien ejecuta la operación es
+        un admin activo y no puede ser su propio objetivo.
+
+     2. Borrar solo funciona sobre cuentas sin actividad. El
+        resto se da de baja, para no dejar cotizaciones
+        firmadas por alguien que ya no existe.
+
+   La comprobación del último admin que sigue más abajo es,
+   hoy, inalcanzable: la barrera 1 ya la implica. Se deja
+   escrita a propósito, porque el día que alguien permita que
+   un admin se modifique a sí mismo, es lo único que evita
+   quedarse con cero.
+   ========================================================= */
+const ERROR_ULTIMO_ADMIN =
+  "Es la única cuenta de administración activa que queda. " +
+  "Nombra antes a otro administrador.";
+
+/* Cierto cuando tocar a esta persona dejaría el sistema sin
+   nadie que pueda administrarlo. Las lecturas y escrituras de
+   node:sqlite son síncronas, así que entre la consulta y el
+   UPDATE no se cuela otra petición: no hace falta transacción. */
+function esUltimoAdmin(fila) {
+  return fila.rol === "admin" && fila.activo === 1 && db.contarAdmins() <= 1;
+}
+
+app.get("/api/usuarios", exigirAdmin, function (req, res) {
+  res.json(db.listarUsuarios().map(function (u) {
+    const actividad = db.contarActividadDe(u.usuario);
+
+    return {
+      usuario: u.usuario,
+      nombre: u.nombre,
+      rol: u.rol,
+      activo: u.activo === 1,
+      creadoEn: u.creado_en,
+      /* La pantalla lo usa para saber si ofrecer "Borrar" o
+         solamente "Dar de baja" */
+      actividad: actividad.registros + actividad.movimientos,
+      yo: u.usuario === req.sesion.usuario
+    };
+  }));
+});
+
+app.post("/api/usuarios", exigirAdmin, function (req, res) {
+  const cuerpo = req.body || {};
+  const usuario = String(cuerpo.usuario || "").trim().toLowerCase();
+  const nombre = String(cuerpo.nombre || "").trim();
+  const rol = String(cuerpo.rol || "usuario").trim().toLowerCase();
+  const contrasena = String(cuerpo.contrasena || "");
+
+  if (!auth.usuarioValido(usuario)) {
+    return res.status(400).json({
+      error: "El usuario debe tener entre 3 y 32 caracteres: letras minúsculas, " +
+             "números, punto, guion o guion bajo."
+    });
   }
+  if (!nombre) {
+    return res.status(400).json({ error: "Falta el nombre completo." });
+  }
+  if (nombre.length > MAX_TEXTO) {
+    return res.status(400).json({ error: "El nombre no puede pasar de " + MAX_TEXTO + " caracteres." });
+  }
+  if (!auth.rolValido(rol)) {
+    return res.status(400).json({ error: "El rol solo puede ser " + auth.ROLES.join(" o ") + "." });
+  }
+  if (contrasena.length < auth.MINIMO_CONTRASENA) {
+    return res.status(400).json({
+      error: "La contraseña debe tener al menos " + auth.MINIMO_CONTRASENA + " caracteres."
+    });
+  }
+  if (db.buscarUsuario(usuario)) {
+    return res.status(409).json({ error: "Ya existe el usuario " + usuario + "." });
+  }
+
+  db.crearUsuario(usuario, nombre, auth.hashContrasena(contrasena), rol);
+  db.anotar(req.sesion.usuario, "alta de cuenta", usuario, nombre + " · " + rol);
+
+  res.status(201).json({ usuario: usuario, nombre: nombre, rol: rol, activo: true });
+});
+
+app.put("/api/usuarios/:usuario/contrasena", exigirAdmin, function (req, res) {
+  const usuario = String(req.params.usuario || "").trim().toLowerCase();
+  const contrasena = String((req.body || {}).contrasena || "");
+
+  if (!db.buscarUsuario(usuario)) {
+    return res.status(404).json({ error: "No existe el usuario " + usuario + "." });
+  }
+  if (contrasena.length < auth.MINIMO_CONTRASENA) {
+    return res.status(400).json({
+      error: "La contraseña debe tener al menos " + auth.MINIMO_CONTRASENA + " caracteres."
+    });
+  }
+
+  db.cambiarContrasena(usuario, auth.hashContrasena(contrasena));
+
+  /* Cambiar la contraseña cierra lo que estuviera abierto: es
+     justo lo que se espera si se cambió por sospecha */
+  db.cerrarSesionesDe(usuario);
+  db.anotar(req.sesion.usuario, "cambio de contraseña", usuario, "");
+
+  /* Cambiarse la propia también cierra la sesión de quien la
+     cambió, así que la pantalla tiene que saberlo para mandarlo
+     al login en vez de quedarse pidiendo datos con 401 */
+  res.json({ ok: true, cerroMiSesion: usuario === req.sesion.usuario });
+});
+
+app.put("/api/usuarios/:usuario/estado", exigirAdmin, function (req, res) {
+  const usuario = String(req.params.usuario || "").trim().toLowerCase();
+  const activo = !!(req.body || {}).activo;
+  const fila = db.buscarUsuario(usuario);
+
+  if (!fila) {
+    return res.status(404).json({ error: "No existe el usuario " + usuario + "." });
+  }
+  if (usuario === req.sesion.usuario) {
+    return res.status(409).json({ error: "No puedes darte de baja a ti mismo." });
+  }
+  if (!activo && esUltimoAdmin(fila)) {
+    return res.status(409).json({ error: ERROR_ULTIMO_ADMIN });
+  }
+
+  db.activarUsuario(usuario, activo);
+  db.anotar(req.sesion.usuario, activo ? "alta de acceso" : "baja de acceso", usuario, "");
+
+  res.json({ ok: true });
+});
+
+app.put("/api/usuarios/:usuario/rol", exigirAdmin, function (req, res) {
+  const usuario = String(req.params.usuario || "").trim().toLowerCase();
+  const rol = String((req.body || {}).rol || "").trim().toLowerCase();
+  const fila = db.buscarUsuario(usuario);
+
+  if (!fila) {
+    return res.status(404).json({ error: "No existe el usuario " + usuario + "." });
+  }
+  if (!auth.rolValido(rol)) {
+    return res.status(400).json({ error: "El rol solo puede ser " + auth.ROLES.join(" o ") + "." });
+  }
+  if (usuario === req.sesion.usuario) {
+    return res.status(409).json({ error: "No puedes cambiarte el rol a ti mismo." });
+  }
+  if (rol !== "admin" && esUltimoAdmin(fila)) {
+    return res.status(409).json({ error: ERROR_ULTIMO_ADMIN });
+  }
+
+  db.cambiarRol(usuario, rol);
+  db.anotar(req.sesion.usuario, "cambio de rol", usuario, fila.rol + " a " + rol);
+
+  res.json({ ok: true });
+});
+
+app.delete("/api/usuarios/:usuario", exigirAdmin, function (req, res) {
+  const usuario = String(req.params.usuario || "").trim().toLowerCase();
+  const fila = db.buscarUsuario(usuario);
+
+  if (!fila) {
+    return res.status(404).json({ error: "No existe el usuario " + usuario + "." });
+  }
+  if (usuario === req.sesion.usuario) {
+    return res.status(409).json({ error: "No puedes borrar tu propia cuenta." });
+  }
+
+  const actividad = db.contarActividadDe(usuario);
+
+  if (actividad.registros > 0 || actividad.movimientos > 0) {
+    return res.status(409).json({
+      error: "No se puede borrar a " + usuario + ": ya tiene actividad registrada (" +
+             actividad.registros + " cotizaciones y " + actividad.movimientos +
+             " movimientos). Borrarla dejaría esos movimientos firmados por alguien " +
+             "que ya no existe. Dale de baja en su lugar."
+    });
+  }
+
+  if (esUltimoAdmin(fila)) {
+    return res.status(409).json({ error: ERROR_ULTIMO_ADMIN });
+  }
+
+  db.eliminarUsuario(usuario);
+  db.anotar(req.sesion.usuario, "borrado de cuenta", usuario, fila.nombre);
+
+  res.json({ ok: true });
+});
+
+/* La bitácora solo la ve quien administra */
+app.get("/api/bitacora", exigirAdmin, function (req, res) {
   res.json(db.leerBitacora(Number(req.query.limite) || 200));
 });
 
@@ -449,7 +690,9 @@ if (db.contarUsuarios() === 0) {
   console.log("  No hay usuarios dados de alta todavía.");
   console.log("  Crea el primero antes de repartir la dirección:");
   console.log("");
-  console.log("    node usuarios.js crear admin \"Nombre Apellido\" \"contraseña\" admin");
+  console.log("    node usuarios.js crear admin \"Nombre Apellido\" admin");
+  console.log("");
+  console.log("  La contraseña se pide aparte, no va en el comando.");
   console.log("");
 }
 

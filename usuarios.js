@@ -1,10 +1,14 @@
 /* =========================================================
    Alta y baja del personal que entra al servidor
 
-   Se ejecuta en el servidor, desde la consola. No hay
-   pantalla de administración dentro del dashboard a
-   propósito: dar de alta a alguien es una tarea de quien
-   administra la máquina, no de quien captura.
+   Se ejecuta en el servidor, desde la consola. Es el camino
+   que siempre funciona: sirve para crear la primera cuenta,
+   cuando todavía no hay ningún admin con quien entrar, y para
+   recuperar el acceso si nadie puede iniciar sesión.
+
+   El día a día se hace desde la pantalla de cuentas
+   (/admin.html). Las dos vías comparten las reglas de auth.js
+   y las consultas de db.js, así que dan el mismo resultado.
 
      node usuarios.js listar
      node usuarios.js crear <usuario> "<nombre>" [rol]
@@ -20,7 +24,7 @@
    recibió: si el número no cuadra con lo que escribiste, la
    terminal se está comiendo teclas.
 
-   Roles: captura (por defecto) y admin, que además puede
+   Roles: usuario (por defecto) y admin, que además puede
    consultar la bitácora.
    ========================================================= */
 
@@ -33,8 +37,10 @@ const auth = require("./auth");
 const CARPETA_DATOS = process.env.COTIZACIONES_DATOS ||
   path.join(__dirname, "datos");
 
-const MINIMO_CONTRASENA = 8;
-const ROLES = ["captura", "admin"];
+/* Las reglas viven en auth.js para que la consola y la
+   pantalla de cuentas exijan exactamente lo mismo */
+const MINIMO_CONTRASENA = auth.MINIMO_CONTRASENA;
+const ROLES = auth.ROLES;
 
 /* ---------------------------------------------------------
    Pedir la contraseña sin mostrarla
@@ -120,9 +126,7 @@ function pedirContrasena(mensaje) {
   });
 }
 
-function nombreValido(usuario) {
-  return /^[a-z0-9._-]{3,32}$/.test(usuario);
-}
+const nombreValido = auth.usuarioValido;
 
 /* No se usa process.exit aquí: en Windows corta la salida
    antes de que el mensaje llegue a la consola. Se lanza el
@@ -167,7 +171,7 @@ const AVISO_CONTRASENA = [
   "La contraseña no se escribe en el comando: se pide aparte,",
   "sin mostrarla, para que no quede en el historial de la consola.",
   "",
-  "  node usuarios.js crear <usuario> \"<nombre completo>\" [captura|admin]",
+  "  node usuarios.js crear <usuario> \"<nombre completo>\" [usuario|admin]",
   "",
   "Ejemplo:",
   "  node usuarios.js crear milton \"Milton Ramírez\" admin"
@@ -176,7 +180,7 @@ const AVISO_CONTRASENA = [
 async function crear(args) {
   const usuario = String(args[0] || "").trim().toLowerCase();
   const nombre = String(args[1] || "").trim();
-  const rol = String(args[2] || "captura").trim().toLowerCase();
+  const rol = String(args[2] || "usuario").trim().toLowerCase();
 
   if (args.length > 3) {
     salirCon("Sobran datos en el comando.\n\n" + AVISO_CONTRASENA);
@@ -295,7 +299,7 @@ function ayuda() {
     "",
     "  Uso:",
     "    node usuarios.js listar",
-    "    node usuarios.js crear <usuario> \"<nombre completo>\" [captura|admin]",
+    "    node usuarios.js crear <usuario> \"<nombre completo>\" [usuario|admin]",
     "    node usuarios.js contrasena <usuario>",
     "    node usuarios.js verificar <usuario>",
     "    node usuarios.js baja <usuario>          (quita el acceso, conserva el rastro)",

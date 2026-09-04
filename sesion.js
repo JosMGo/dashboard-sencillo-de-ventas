@@ -11,6 +11,7 @@
   const barra = document.getElementById("sesion");
   const etiqueta = document.getElementById("sesionNombre");
   const boton = document.getElementById("btnSalir");
+  const enlaceUsuarios = document.getElementById("enlaceUsuarios");
 
   if (!barra || !etiqueta || !boton) return;
 
@@ -28,6 +29,14 @@
     })
     .then(function (sesion) {
       etiqueta.textContent = sesion.nombre;
+
+      /* La administración de cuentas solo se le ofrece a quien
+         puede usarla. Es una comodidad, no una defensa: quien
+         escriba /admin.html a mano es devuelto por el servidor. */
+      if (enlaceUsuarios && sesion.rol === "admin") {
+        enlaceUsuarios.hidden = false;
+      }
+
       barra.hidden = false;
     })
     .catch(function () {

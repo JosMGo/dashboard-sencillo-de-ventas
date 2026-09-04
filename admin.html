@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>Cuentas de acceso</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <h1>Cuentas de acceso</h1>
+      <div class="topbar-acciones">
+        <span class="sesion-nombre" id="sesionNombre"></span>
+        <a class="btn btn-plano" href="/index.html">Volver al dashboard</a>
+        <button type="button" class="btn btn-plano" id="btnSalir">Salir</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Errores y confirmaciones de cualquier operación -->
+    <div class="aviso aviso-error" id="aviso" hidden></div>
+    <div class="aviso aviso-ok" id="avisoOk" hidden></div>
+
+    <!-- Alta -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Dar de alta</h2>
+        <span class="panel-sub">La persona entra con estos datos</span>
+      </div>
+
+      <form class="form-alta" id="formAlta">
+        <div class="campo">
+          <label for="usuario">Usuario</label>
+          <input type="text" id="usuario" required autocomplete="off"
+                 placeholder="milton" maxlength="32">
+          <span class="campo-ayuda">Es lo que se escribe en el login: minúsculas, sin espacios.</span>
+        </div>
+
+        <div class="campo">
+          <label for="nombre">Nombre completo</label>
+          <input type="text" id="nombre" required autocomplete="off"
+                 placeholder="Milton Álvarez" maxlength="200">
+          <span class="campo-ayuda">Es lo que aparece en pantalla y firma los registros.</span>
+        </div>
+
+        <div class="campo campo-corto">
+          <label for="rol">Rol</label>
+          <select id="rol">
+            <option value="usuario">Usuario</option>
+            <option value="admin">Administración</option>
+          </select>
+          <span class="campo-ayuda">Administración también gestiona cuentas.</span>
+        </div>
+
+        <div class="campo">
+          <label for="contrasena">Contraseña</label>
+          <input type="password" id="contrasena" required autocomplete="new-password"
+                 minlength="8" placeholder="Mínimo 8 caracteres" data-ojo>
+        </div>
+
+        <div class="campo">
+          <label for="contrasena2">Repetir contraseña</label>
+          <input type="password" id="contrasena2" required autocomplete="new-password"
+                 minlength="8" data-ojo>
+        </div>
+
+        <div class="form-alta-acciones">
+          <button type="submit" class="btn btn-primary" id="btnCrear">Dar de alta</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Listado -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Personal dado de alta</h2>
+        <span class="panel-sub" id="conteo"></span>
+      </div>
+
+      <div class="tabla-scroll">
+        <table class="tabla tabla-usuarios">
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Nombre</th>
+              <th>Rol</th>
+              <th>Estado</th>
+              <th class="num">Actividad</th>
+              <th class="center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyUsuarios"></tbody>
+        </table>
+      </div>
+
+      <p class="panel-vacio" id="cargando">Cargando...</p>
+    </section>
+
+  </main>
+
+  <!-- Cambio de contraseña -->
+  <div class="modal" id="modalClave" hidden>
+    <div class="modal-caja">
+      <h2 id="modalClaveTitulo">Cambiar contraseña</h2>
+
+      <p class="modal-nota">
+        Al guardarla se cierran las sesiones que esa persona tenga abiertas.
+      </p>
+
+      <form id="formClave">
+        <label for="claveNueva">Nueva contraseña</label>
+        <input type="password" id="claveNueva" required minlength="8"
+               autocomplete="new-password" placeholder="Mínimo 8 caracteres" data-ojo>
+
+        <label for="claveRepetida">Repetirla</label>
+        <input type="password" id="claveRepetida" required minlength="8"
+               autocomplete="new-password" data-ojo>
+
+        <p class="modal-error" id="claveError" hidden></p>
+
+        <div class="modal-acciones">
+          <button type="button" class="btn" id="btnClaveCancelar">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btnClaveGuardar">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <footer class="pie">
+    <div class="container">
+      <span>
+        Estas mismas altas y bajas se pueden hacer desde la consola del
+        servidor con <code>node usuarios.js</code>.
+      </span>
+    </div>
+  </footer>
+
+  <script src="ojo.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

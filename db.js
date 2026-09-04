@@ -69,7 +69,7 @@ function abrir(carpetaDatos) {
     "  usuario   TEXT PRIMARY KEY," +
     "  nombre    TEXT NOT NULL," +
     "  hash      TEXT NOT NULL," +
-    "  rol       TEXT NOT NULL DEFAULT 'captura'," +
+    "  rol       TEXT NOT NULL DEFAULT 'usuario'," +
     "  activo    INTEGER NOT NULL DEFAULT 1," +
     "  creado_en TEXT NOT NULL" +
     ")"
@@ -129,6 +129,13 @@ function migrar() {
       db.exec("ALTER TABLE registros ADD COLUMN " + col[0] + " " + col[1]);
     }
   });
+
+  /* El rol "captura" se renombró a "usuario". Sin esta línea,
+     las cuentas creadas antes del cambio se quedan con un rol
+     que ya no está en auth.ROLES: seguirían entrando, pero
+     cualquier intento de editarlas fallaría la validación.
+     Es idempotente, así que correrla de más no hace nada. */
+  db.exec("UPDATE usuarios SET rol = 'usuario' WHERE rol = 'captura'");
 }
 
 /* SQLite no tiene booleanos: se guardan como 0 y 1 */
@@ -293,7 +300,7 @@ function crearUsuario(usuario, nombre, hash, rol) {
     usuario: String(usuario),
     nombre: String(nombre),
     hash: String(hash),
-    rol: String(rol || "captura"),
+    rol: String(rol || "usuario"),
     creado_en: ahora()
   });
 }
@@ -312,6 +319,22 @@ function cambiarContrasena(usuario, hash) {
   const r = db.prepare("UPDATE usuarios SET hash = ? WHERE usuario = ?")
     .run(String(hash), String(usuario));
   return r.changes > 0;
+}
+
+function cambiarRol(usuario, rol) {
+  const r = db.prepare("UPDATE usuarios SET rol = ? WHERE usuario = ?")
+    .run(String(rol), String(usuario));
+  return r.changes > 0;
+}
+
+/* Cuántas cuentas de administración quedan en pie. Se consulta
+   antes de quitarle el rol, el acceso o la cuenta a un admin:
+   si se va la última, ya nadie puede entrar a administrar y la
+   única salida queda ser la consola del servidor. */
+function contarAdmins() {
+  return db.prepare(
+    "SELECT COUNT(*) AS n FROM usuarios WHERE rol = 'admin' AND activo = 1"
+  ).get().n;
 }
 
 function activarUsuario(usuario, activo) {
@@ -436,8 +459,10 @@ module.exports = {
   buscarUsuario: buscarUsuario,
   listarUsuarios: listarUsuarios,
   cambiarContrasena: cambiarContrasena,
+  cambiarRol: cambiarRol,
   activarUsuario: activarUsuario,
   contarUsuarios: contarUsuarios,
+  contarAdmins: contarAdmins,
   contarActividadDe: contarActividadDe,
   eliminarUsuario: eliminarUsuario,
   abrirSesion: abrirSesion,
@@ -446,6 +471,9 @@ module.exports = {
   cerrarSesion: cerrarSesion,
   cerrarSesionesDe: cerrarSesionesDe,
   purgarSesiones: purgarSesiones,
+  /* Se expone para que el alta y la baja de cuentas dejen el
+     mismo rastro que las cotizaciones */
+  anotar: anotar,
   leerBitacora: leerBitacora,
   info: info,
   cerrar: cerrar

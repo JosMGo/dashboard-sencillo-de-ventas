@@ -739,3 +739,212 @@ input:focus, select:focus {
   color: var(--texto-suave);
   line-height: 1.5;
 }
+
+/* ---------- Pantalla de cuentas ---------- */
+.aviso-error {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #7f1d1d;
+}
+
+.aviso-ok {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #14532d;
+}
+
+.aviso-ok[hidden] { display: none !important; }
+
+/* El alta cabe en dos columnas en pantalla ancha y se apila
+   sola en pantalla angosta */
+.form-alta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+  padding: 18px 0 4px;
+}
+
+.campo { display: flex; flex-direction: column; }
+
+.campo label {
+  font-size: 13px;
+  color: var(--texto-suave);
+  margin-bottom: 5px;
+}
+
+.campo input,
+.campo select {
+  padding: 9px 11px;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--texto);
+  background: var(--blanco);
+  width: 100%;
+}
+
+.campo input:focus,
+.campo select:focus {
+  outline: none;
+  border-color: var(--azul);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+}
+
+.campo-ayuda {
+  font-size: 12px;
+  color: var(--texto-suave);
+  margin-top: 5px;
+}
+
+.form-alta-acciones {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tabla-usuarios { min-width: 780px; }
+
+.usuario-id { font-weight: 500; }
+
+/* Una cuenta dada de baja sigue en la tabla, pero atenuada:
+   está ahí para consultarla o reactivarla, no para operarla */
+.usuario-baja td { color: var(--texto-suave); }
+
+.etiqueta-yo {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: var(--azul-oscuro);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.estado-activo { color: var(--verde); }
+.estado-baja { color: var(--texto-suave); }
+
+.tabla-usuarios .acciones {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.modal-nota {
+  margin: -6px 0 16px;
+  font-size: 13px;
+  color: var(--texto-suave);
+}
+
+.modal-caja input[type="password"] {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  margin-bottom: 14px;
+}
+
+.modal-caja input[type="password"]:focus {
+  outline: none;
+  border-color: var(--azul);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+}
+
+.modal-error {
+  margin: 0 0 14px;
+  padding: 9px 11px;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #7f1d1d;
+  font-size: 13px;
+}
+
+.modal-error[hidden] { display: none !important; }
+
+.pie code {
+  font-size: 12px;
+  background: var(--fondo);
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+@media (max-width: 700px) {
+  .form-alta { grid-template-columns: 1fr; }
+}
+
+/* ---------- Ojo para ver la contraseña ---------- */
+
+/* El envoltorio lo crea ojo.js. Da el punto de referencia para
+   colocar el botón encima del campo. */
+.clave-campo {
+  position: relative;
+  display: block;
+}
+
+/* El campo cede sitio al botón y suelta su margen inferior,
+   que pasa al envoltorio: si se quedara en el input, el ojo
+   quedaría descentrado justo esos pixeles */
+.clave-campo input {
+  width: 100%;
+  padding-right: 44px;
+  margin-bottom: 0;
+}
+
+/* Dentro del modal el campo se estilaba por [type=password], y
+   al mostrarla pasa a ser type=text. Sin esto perdería el
+   borde justo al pulsar el ojo. */
+.modal-caja .clave-campo { margin-bottom: 14px; }
+
+.modal-caja .clave-campo input {
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  padding: 9px 44px 9px 11px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--texto);
+  background: var(--blanco);
+}
+
+.modal-caja .clave-campo input:focus {
+  outline: none;
+  border-color: var(--azul);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+}
+
+.clave-ojo {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--texto-suave);
+  cursor: pointer;
+}
+
+.clave-ojo:hover {
+  background: #f0f1f4;
+  color: var(--texto);
+}
+
+/* El foco tiene que verse: es un botón que se alcanza con Tab
+   desde el campo de contraseña */
+.clave-ojo:focus-visible {
+  outline: 2px solid var(--azul);
+  outline-offset: 1px;
+  color: var(--texto);
+}
+
+/* Mientras la contraseña está a la vista, el ojo se marca:
+   es el único indicio de que hay algo legible en pantalla */
+.clave-ojo[aria-pressed="true"] { color: var(--azul); }

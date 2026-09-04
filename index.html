@@ -17,6 +17,8 @@
         <!-- Solo se muestra cuando la página viene del servidor -->
         <span class="sesion" id="sesion" hidden>
           <span class="sesion-nombre" id="sesionNombre"></span>
+          <!-- Solo para el rol admin; el servidor lo niega igual -->
+          <a class="btn btn-plano" id="enlaceUsuarios" href="/admin.html" hidden>Usuarios</a>
           <button type="button" class="btn btn-plano" id="btnSalir">Salir</button>
         </span>
         <button id="btnNueva" class="btn btn-primary">+ Nueva cotización</button>

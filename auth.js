@@ -6,8 +6,9 @@
    necesitan Visual Studio Build Tools en Windows y aquí no
    hacen falta, scrypt es igual de sólido para este caso.
 
-   Este archivo no toca la base de datos: solo calcula y
-   compara. Las consultas viven en db.js.
+   Este archivo no toca la base de datos: solo calcula,
+   compara y dice qué datos son aceptables. Las consultas
+   viven en db.js.
    ========================================================= */
 
 const crypto = require("crypto");
@@ -86,9 +87,39 @@ function hashToken(token) {
   return crypto.createHash("sha256").update(String(token)).digest("hex");
 }
 
+/* ---------------------------------------------------------
+   Reglas de la cuenta
+
+   Viven aquí porque hay dos caminos para dar de alta a
+   alguien: la consola (usuarios.js) y la pantalla de
+   administración (server.js). Con la regla copiada en los dos
+   lados, tarde o temprano una se queda atrás y aparecen
+   cuentas que solo se pueden crear por una de las dos vías.
+   --------------------------------------------------------- */
+const MINIMO_CONTRASENA = 8;
+/* "usuario" se llamó "captura" hasta que se renombró. Las
+   filas viejas las convierte la migración de db.js, así que
+   aquí ya no hace falta aceptar el nombre antiguo. */
+const ROLES = ["usuario", "admin"];
+
+/* Minúsculas a propósito: el login normaliza a minúsculas
+   antes de buscar, así que permitir mayúsculas aquí crearía
+   cuentas imposibles de usar. */
+function usuarioValido(usuario) {
+  return /^[a-z0-9._-]{3,32}$/.test(String(usuario));
+}
+
+function rolValido(rol) {
+  return ROLES.indexOf(String(rol)) !== -1;
+}
+
 module.exports = {
   hashContrasena: hashContrasena,
   verificarContrasena: verificarContrasena,
   nuevoToken: nuevoToken,
-  hashToken: hashToken
+  hashToken: hashToken,
+  MINIMO_CONTRASENA: MINIMO_CONTRASENA,
+  ROLES: ROLES,
+  usuarioValido: usuarioValido,
+  rolValido: rolValido
 };
