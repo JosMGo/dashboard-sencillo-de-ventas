@@ -13,7 +13,14 @@
   <header class="topbar">
     <div class="container topbar-inner">
       <h1>Cotizaciones y Proyectos</h1>
-      <button id="btnNueva" class="btn btn-primary">+ Nueva cotización</button>
+      <div class="topbar-acciones">
+        <!-- Solo se muestra cuando la página viene del servidor -->
+        <span class="sesion" id="sesion" hidden>
+          <span class="sesion-nombre" id="sesionNombre"></span>
+          <button type="button" class="btn btn-plano" id="btnSalir">Salir</button>
+        </span>
+        <button id="btnNueva" class="btn btn-primary">+ Nueva cotización</button>
+      </div>
     </div>
   </header>
 
@@ -258,6 +265,7 @@
   </footer>
 
   <script src="almacen.js"></script>
+  <script src="sesion.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

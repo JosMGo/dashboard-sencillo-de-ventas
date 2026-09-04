@@ -141,8 +141,108 @@ const AlmacenSQLite = {
 };
 
 /* ---------------------------------------------------------
-   Se elige la versión según dónde se esté ejecutando
+   Versión servidor: API HTTP
+
+   Se usa cuando la página llega desde el servidor de la
+   empresa. Los datos quedan en la base compartida, así que
+   lo que captura una persona lo ven todas.
+
+   La sesión viaja en una cookie httpOnly que pone el
+   servidor: aquí no se maneja ningún token.
    --------------------------------------------------------- */
+const AlmacenHTTP = {
+
+  /* Si la sesión venció, el servidor responde 401 y no tiene
+     caso seguir: se manda a la pantalla de acceso */
+  pedir: function (ruta, opciones) {
+    const config = Object.assign({
+      method: "GET",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" }
+    }, opciones || {});
+
+    return fetch(ruta, config).then(function (respuesta) {
+      if (respuesta.status === 401) {
+        window.location.replace("/login.html");
+        throw new Error("La sesión terminó.");
+      }
+
+      if (respuesta.status === 204) return null;
+
+      return respuesta.json().catch(function () {
+        throw new Error("El servidor respondió algo inesperado.");
+      }).then(function (cuerpo) {
+        if (!respuesta.ok) {
+          throw new Error(cuerpo.error || "El servidor rechazó la operación.");
+        }
+        return cuerpo;
+      });
+    });
+  },
+
+  listar: function () {
+    return this.pedir("/api/registros");
+  },
+
+  crear: function (registro) {
+    return this.pedir("/api/registros", {
+      method: "POST",
+      body: JSON.stringify(registro)
+    });
+  },
+
+  actualizar: function (registro) {
+    return this.pedir("/api/registros/" + encodeURIComponent(registro.id), {
+      method: "PUT",
+      body: JSON.stringify(registro)
+    });
+  },
+
+  eliminar: function (id) {
+    return this.pedir("/api/registros/" + encodeURIComponent(id), {
+      method: "DELETE"
+    });
+  },
+
+  leerMetas: function () {
+    return this.pedir("/api/metas");
+  },
+
+  guardarMeta: function (periodo, monto) {
+    return this.pedir("/api/metas/" + encodeURIComponent(periodo), {
+      method: "PUT",
+      body: JSON.stringify({ monto: monto })
+    });
+  },
+
+  /* Aquí "disponible" significa que hay sesión abierta y el
+     servidor responde */
+  disponible: function () {
+    return this.pedir("/api/sesion").then(function () {
+      return true;
+    }).catch(function () {
+      return false;
+    });
+  },
+
+  info: function () {
+    return this.pedir("/api/info").catch(function () {
+      return { tipo: "servidor", descripcion: "Servidor de la empresa" };
+    });
+  }
+};
+
+/* ---------------------------------------------------------
+   Se elige la versión según dónde se esté ejecutando
+
+   - Dentro de Electron      -> SQLite local (window.api)
+   - Servido por http(s)     -> API del servidor
+   - index.html suelto       -> localStorage de este navegador
+   --------------------------------------------------------- */
+const desdeServidor = typeof window !== "undefined" &&
+  window.location &&
+  (window.location.protocol === "http:" || window.location.protocol === "https:");
+
 const Almacen = (typeof window !== "undefined" && window.api)
   ? AlmacenSQLite
-  : AlmacenLocal;
+  : (desdeServidor ? AlmacenHTTP : AlmacenLocal);

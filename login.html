@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>Entrar · Cotizaciones y Proyectos</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="login-body">
+
+  <main class="login-caja">
+    <h1 class="login-titulo">Cotizaciones y Proyectos</h1>
+    <p class="login-sub">Entra con el usuario que te dieron para capturar.</p>
+
+    <form id="formLogin" class="login-form" autocomplete="on">
+      <div class="login-campo">
+        <label for="usuario">Usuario</label>
+        <input type="text" id="usuario" name="usuario" autocomplete="username"
+               autocapitalize="none" spellcheck="false" required autofocus>
+      </div>
+
+      <div class="login-campo">
+        <label for="contrasena">Contraseña</label>
+        <input type="password" id="contrasena" name="contrasena"
+               autocomplete="current-password" required>
+      </div>
+
+      <p class="login-error" id="errorLogin" hidden></p>
+
+      <button type="submit" class="btn btn-primary login-btn" id="btnEntrar">Entrar</button>
+    </form>
+
+    <p class="login-pie">
+      ¿No tienes usuario o lo olvidaste? Pídelo a quien administra el servidor.
+    </p>
+  </main>
+
+  <script src="login.js"></script>
+</body>
+</html>
