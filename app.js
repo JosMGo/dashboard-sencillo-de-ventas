@@ -7,14 +7,14 @@
 const LOCALE = "es-BO";
 const MONEDA = "BOB";
 
-/* Semáforo de la meta: verde desde 100%, ámbar desde 70%, rojo abajo */
-const META_VERDE = 100;
-const META_AMBAR = 70;
+/* La clave de localStorage y la capa de guardado viven en almacen.js.
 
-/* La clave de localStorage y la capa de guardado viven en almacen.js */
-
-const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
-               "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+   Las sumas, promedios y agregados viven en calculos.js, que
+   también usa el servidor para armar el PDF. Aquí solo se
+   pintan: si esta pantalla calculara por su cuenta, el informe
+   y el dashboard acabarían diciendo cifras distintas. */
+const MESES = Calculos.MESES;
+const NOMBRES_MES = Calculos.NOMBRES_MES;
 
 /* Lista de registros en memoria (se llena al iniciar) */
 let registros = [];
@@ -22,8 +22,16 @@ let registros = [];
 /* Metas por periodo: { "2026-09": 150000 } */
 let metas = {};
 
-const NOMBRES_MES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-                     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+/* Lo que la pantalla tiene filtrado ahora mismo. Es lo que
+   entiende calculos.js, y lo mismo que se le manda al servidor
+   al exportar. */
+function filtrosActuales() {
+  return {
+    texto: buscador.value.trim(),
+    mes: filtroMes.value,
+    anio: filtroAnio.value
+  };
+}
 
 /* ---------- Elementos del DOM ---------- */
 const tbody = document.getElementById("tbody");
@@ -102,28 +110,7 @@ function escapar(texto) {
    Filtros
    ========================================================= */
 function obtenerFiltrados() {
-  const texto = buscador.value.trim().toLowerCase();
-  const mes = filtroMes.value;
-  const anio = filtroAnio.value;
-
-  return registros
-    .filter(function (r) {
-      const fecha = new Date(r.fecha);
-
-      if (mes !== "todos" && fecha.getMonth() !== Number(mes)) return false;
-      if (anio !== "todos" && fecha.getFullYear() !== Number(anio)) return false;
-
-      if (texto) {
-        const enNombre = r.nombre.toLowerCase().includes(texto);
-        const enEmpresa = r.empresa.toLowerCase().includes(texto);
-        if (!enNombre && !enEmpresa) return false;
-      }
-      return true;
-    })
-    /* Del mas reciente al mas antiguo */
-    .sort(function (a, b) {
-      return new Date(b.fecha) - new Date(a.fecha);
-    });
+  return Calculos.filtrar(registros, filtrosActuales());
 }
 
 /* Llena el selector de anio con los anios que existen en los datos */
@@ -182,34 +169,19 @@ function render() {
   vacio.hidden = lista.length > 0;
 
   /* --- Totales del dashboard (sobre los registros filtrados) --- */
-  let cotizado = 0;
-  let ventas = 0;
-  let cobrado = 0;
-  let pendiente = 0;
-  let numVentas = 0;
+  const t = Calculos.totales(lista);
 
-  lista.forEach(function (r) {
-    const monto = Number(r.monto) || 0;
-    cotizado += monto;
-    if (r.venta) {
-      ventas += monto;
-      numVentas++;
-      if (r.cobro) cobrado += monto;
-      else pendiente += monto;
-    }
-  });
-
-  document.getElementById("statTotal").textContent = lista.length;
-  document.getElementById("statCotizado").textContent = moneda(cotizado);
-  document.getElementById("statVentas").textContent = moneda(ventas);
+  document.getElementById("statTotal").textContent = t.num;
+  document.getElementById("statCotizado").textContent = moneda(t.cotizado);
+  document.getElementById("statVentas").textContent = moneda(t.vendido);
   document.getElementById("statVentasNota").textContent =
-    numVentas + (numVentas === 1 ? " venta" : " ventas");
-  document.getElementById("statCobrado").textContent = moneda(cobrado);
-  document.getElementById("statPendiente").textContent = moneda(pendiente);
+    t.numVentas + (t.numVentas === 1 ? " venta" : " ventas");
+  document.getElementById("statCobrado").textContent = moneda(t.cobrado);
+  document.getElementById("statPendiente").textContent = moneda(t.pendiente);
 
   /* --- Métricas y paneles --- */
-  renderMetricas(lista.length, numVentas, cotizado, ventas, cobrado);
-  renderMeta(ventas);
+  renderMetricas(t);
+  renderMeta(t.vendido);
   renderEmpresas(lista);
   renderGrafica();
   renderRanking(lista);
@@ -226,37 +198,17 @@ function render() {
    (no tendría sentido escribir una suma).
    ========================================================= */
 function periodoSeleccionado() {
-  const mes = filtroMes.value;
-  const anio = filtroAnio.value;
-
-  if (mes === "todos" || anio === "todos") return null;
-  return anio + "-" + String(Number(mes) + 1).padStart(2, "0");
+  return Calculos.periodoDe(filtrosActuales());
 }
 
 /* Suma las metas que caen dentro del filtro actual */
 function metaDelFiltro() {
-  const periodo = periodoSeleccionado();
-  if (periodo) return Number(metas[periodo]) || 0;
-
-  const mes = filtroMes.value;
-  const anio = filtroAnio.value;
-  let total = 0;
-
-  Object.keys(metas).forEach(function (clave) {
-    const partes = clave.split("-");
-    if (anio !== "todos" && partes[0] !== anio) return;
-    if (mes !== "todos" && Number(partes[1]) !== Number(mes) + 1) return;
-    total += Number(metas[clave]) || 0;
-  });
-
-  return total;
+  return Calculos.metaDelFiltro(metas, filtrosActuales());
 }
 
 /* Devuelve "verde", "ambar" o "rojo" según el avance */
 function nivelSemaforo(avance) {
-  if (avance >= META_VERDE) return "verde";
-  if (avance >= META_AMBAR) return "ambar";
-  return "rojo";
+  return Calculos.nivelSemaforo(avance);
 }
 
 function renderMeta(vendido) {
@@ -341,34 +293,9 @@ function renderEmpresas(lista) {
     document.getElementById("metaPeriodo").textContent;
 
   const meta = metaDelFiltro();
-  const porEmpresa = {};
 
-  lista.forEach(function (r) {
-    const nombre = (r.empresa || "(Sin empresa)").trim();
-    if (!porEmpresa[nombre]) {
-      porEmpresa[nombre] = {
-        nombre: nombre, num: 0, numVentas: 0,
-        cotizado: 0, vendido: 0, cobrado: 0, pendiente: 0
-      };
-    }
-
-    const e = porEmpresa[nombre];
-    const monto = Number(r.monto) || 0;
-
-    e.num++;
-    e.cotizado += monto;
-    if (r.venta) {
-      e.numVentas++;
-      e.vendido += monto;
-      if (r.cobro) e.cobrado += monto;
-      else e.pendiente += monto;
-    }
-  });
-
-  /* De mayor a menor monto vendido */
-  const empresas = Object.keys(porEmpresa)
-    .map(function (n) { return porEmpresa[n]; })
-    .sort(function (a, b) { return b.vendido - a.vendido; });
+  /* Ya viene de mayor a menor monto vendido */
+  const empresas = Calculos.porEmpresa(lista);
 
   const cuerpo = document.getElementById("tbodyEmpresas");
   const pie = document.getElementById("tfootEmpresas");
@@ -439,24 +366,20 @@ function renderListaEmpresas() {
    Métricas
    ========================================================= */
 function porcentaje(parte, total) {
-  if (!total) return 0;
-  return Math.round((parte / total) * 100);
+  return Calculos.porcentaje(parte, total);
 }
 
-function renderMetricas(numRegistros, numVentas, cotizado, ventas, cobrado) {
-  const conversion = porcentaje(numVentas, numRegistros);
-  const ticket = numRegistros ? cotizado / numRegistros : 0;
-  const ticketVenta = numVentas ? ventas / numVentas : 0;
-  const avanceCobro = porcentaje(cobrado, ventas);
+function renderMetricas(t) {
+  const m = Calculos.metricas(t);
 
-  document.getElementById("mConversion").textContent = conversion + "%";
+  document.getElementById("mConversion").textContent = m.conversion + "%";
   document.getElementById("mConversionNota").textContent =
-    numVentas + " de " + numRegistros + (numRegistros === 1 ? " cotización" : " cotizaciones");
-  document.getElementById("mTicket").textContent = moneda(ticket);
-  document.getElementById("mTicketVenta").textContent = moneda(ticketVenta);
-  document.getElementById("mCobro").textContent = avanceCobro + "%";
+    t.numVentas + " de " + t.num + (t.num === 1 ? " cotización" : " cotizaciones");
+  document.getElementById("mTicket").textContent = moneda(m.ticket);
+  document.getElementById("mTicketVenta").textContent = moneda(m.ticketVenta);
+  document.getElementById("mCobro").textContent = m.avanceCobro + "%";
   document.getElementById("mCobroNota").textContent =
-    moneda(cobrado) + " de " + moneda(ventas);
+    moneda(t.cobrado) + " de " + moneda(t.vendido);
 }
 
 /* =========================================================
@@ -465,32 +388,14 @@ function renderMetricas(numRegistros, numVentas, cotizado, ventas, cobrado) {
    para poder comparar los 12 meses entre sí)
    ========================================================= */
 function renderGrafica() {
-  const texto = buscador.value.trim().toLowerCase();
   const anio = filtroAnio.value;
 
   document.getElementById("panelAnio").textContent =
     anio === "todos" ? "Todos los años" : "Año " + anio;
 
-  /* Un acumulador por mes */
-  const meses = MESES.map(function () {
-    return { cotizado: 0, vendido: 0 };
-  });
-
-  registros.forEach(function (r) {
-    const fecha = new Date(r.fecha);
-    if (isNaN(fecha)) return;
-    if (anio !== "todos" && fecha.getFullYear() !== Number(anio)) return;
-
-    if (texto) {
-      const enNombre = r.nombre.toLowerCase().includes(texto);
-      const enEmpresa = r.empresa.toLowerCase().includes(texto);
-      if (!enNombre && !enEmpresa) return;
-    }
-
-    const monto = Number(r.monto) || 0;
-    meses[fecha.getMonth()].cotizado += monto;
-    if (r.venta) meses[fecha.getMonth()].vendido += monto;
-  });
+  /* Un acumulador por mes. porMes ignora el filtro de mes a
+     propósito, para poder comparar los doce entre sí. */
+  const meses = Calculos.porMes(registros, filtrosActuales());
 
   /* El mes más alto define el 100% de la altura */
   const maximo = Math.max.apply(null, meses.map(function (m) {
@@ -518,26 +423,7 @@ function renderGrafica() {
    Ranking: top 5 empresas por monto cotizado
    ========================================================= */
 function renderRanking(lista) {
-  const porEmpresa = {};
-
-  lista.forEach(function (r) {
-    const nombre = r.empresa || "(Sin empresa)";
-    if (!porEmpresa[nombre]) porEmpresa[nombre] = { cotizado: 0, vendido: 0 };
-    porEmpresa[nombre].cotizado += Number(r.monto) || 0;
-    if (r.venta) porEmpresa[nombre].vendido += Number(r.monto) || 0;
-  });
-
-  const top = Object.keys(porEmpresa)
-    .map(function (nombre) {
-      return {
-        nombre: nombre,
-        cotizado: porEmpresa[nombre].cotizado,
-        vendido: porEmpresa[nombre].vendido
-      };
-    })
-    .sort(function (a, b) { return b.cotizado - a.cotizado; })
-    .slice(0, 5);
-
+  const top = Calculos.ranking(lista, 5);
   const ranking = document.getElementById("ranking");
 
   if (top.length === 0) {
@@ -703,6 +589,42 @@ function situarseEnMesActual() {
     return o.value === anio;
   });
   if (existe) filtroAnio.value = anio;
+}
+
+/* =========================================================
+   Informe en PDF
+
+   El botón solo existe cuando la página viene del servidor y
+   la sesión es de administración; sesion.js se encarga de
+   mostrarlo. Aquí solo se le pasan los filtros que están
+   puestos, para que el papel muestre lo mismo que la pantalla.
+
+   Se navega a la dirección en vez de usar fetch: el servidor
+   responde con Content-Disposition, así que el navegador
+   descarga el archivo y la página no se mueve.
+   ========================================================= */
+const btnExportarPDF = document.getElementById("btnExportar");
+
+if (btnExportarPDF) {
+  btnExportarPDF.addEventListener("click", function () {
+    const parametros = new URLSearchParams({
+      mes: filtroMes.value,
+      anio: filtroAnio.value,
+      buscar: buscador.value.trim()
+    });
+
+    /* Se deshabilita un momento para que un doble clic no
+       dispare dos veces la generación */
+    btnExportarPDF.disabled = true;
+    btnExportarPDF.textContent = "Generando...";
+
+    window.location.href = "/api/exportar/pdf?" + parametros.toString();
+
+    setTimeout(function () {
+      btnExportarPDF.disabled = false;
+      btnExportarPDF.textContent = "Exportar PDF";
+    }, 2500);
+  });
 }
 
 function iniciar() {

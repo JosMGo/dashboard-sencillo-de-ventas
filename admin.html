@@ -76,6 +76,31 @@
       </form>
     </section>
 
+    <!-- Respaldo -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Respaldo de la base</h2>
+        <span class="panel-sub" id="respaldoUltimo"></span>
+      </div>
+
+      <p class="respaldo-estado" id="respaldoAuto"></p>
+
+      <div class="respaldo-cuerpo">
+        <p class="respaldo-nota">
+          El servidor respalda solo, una vez al día. Este botón sirve para
+          llevarte una copia ahora mismo, por ejemplo antes de tocar algo
+          delicado. Descarga la base completa en un solo archivo
+          <code>.db</code>, y esa copia queda además guardada en el
+          servidor: es lo que permite deshacer un borrado sin depender de
+          que alguien la hubiera descargado. Las copias del servidor se
+          borran solas al cumplir <strong id="respaldoDias">30</strong> días.
+        </p>
+        <button type="button" class="btn btn-primary" id="btnRespaldo">
+          Descargar respaldo
+        </button>
+      </div>
+    </section>
+
     <!-- Listado -->
     <section class="panel">
       <div class="panel-head">

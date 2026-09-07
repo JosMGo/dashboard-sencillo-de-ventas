@@ -948,3 +948,55 @@ input:focus, select:focus {
 /* Mientras la contraseña está a la vista, el ojo se marca:
    es el único indicio de que hay algo legible en pantalla */
 .clave-ojo[aria-pressed="true"] { color: var(--azul); }
+
+/* ---------- Respaldo ---------- */
+.respaldo-cuerpo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 0 4px;
+  flex-wrap: wrap;
+}
+
+.respaldo-nota {
+  margin: 0;
+  font-size: 13px;
+  color: var(--texto-suave);
+  max-width: 620px;
+  line-height: 1.5;
+}
+
+.respaldo-nota code {
+  font-size: 12px;
+  background: var(--fondo);
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.respaldo-nota strong { color: var(--texto); }
+
+/* El botón no se encoge cuando el texto de al lado es largo */
+#btnRespaldo { flex-shrink: 0; }
+
+.respaldo-estado {
+  margin: 14px 0 0;
+  padding: 9px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.respaldo-estado.activo {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  color: #14532d;
+}
+
+/* Sin automático el respaldo depende de que alguien se
+   acuerde, y eso conviene que se lea como una advertencia */
+.respaldo-estado.apagado {
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  color: #78350f;
+}

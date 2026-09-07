@@ -12,6 +12,7 @@
   const etiqueta = document.getElementById("sesionNombre");
   const boton = document.getElementById("btnSalir");
   const enlaceUsuarios = document.getElementById("enlaceUsuarios");
+  const btnExportar = document.getElementById("btnExportar");
 
   if (!barra || !etiqueta || !boton) return;
 
@@ -33,8 +34,9 @@
       /* La administración de cuentas solo se le ofrece a quien
          puede usarla. Es una comodidad, no una defensa: quien
          escriba /admin.html a mano es devuelto por el servidor. */
-      if (enlaceUsuarios && sesion.rol === "admin") {
-        enlaceUsuarios.hidden = false;
+      if (sesion.rol === "admin") {
+        if (enlaceUsuarios) enlaceUsuarios.hidden = false;
+        if (btnExportar) btnExportar.hidden = false;
       }
 
       barra.hidden = false;

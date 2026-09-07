@@ -416,6 +416,23 @@ function cerrarSesionesDe(usuario) {
   db.prepare("DELETE FROM sesiones WHERE usuario = ?").run(String(usuario));
 }
 
+/* ---------------------------------------------------------
+   Respaldo
+
+   VACUUM INTO escribe una copia completa y consistente sin
+   detener el servicio. Copiar el archivo .db a mano sería un
+   error: en modo WAL los últimos cambios viven en el archivo
+   -wal, así que la copia saldría incompleta o corrupta según
+   el momento en que se hiciera.
+
+   La copia que sale ya viene compactada y sin el -wal, así
+   que es un solo archivo listo para guardar o restaurar.
+   --------------------------------------------------------- */
+function respaldar(rutaDestino) {
+  db.prepare("VACUUM INTO ?").run(String(rutaDestino));
+  return rutaDestino;
+}
+
 function purgarSesiones() {
   const r = db.prepare("DELETE FROM sesiones WHERE expira_en < ?").run(ahora());
   return r.changes;
@@ -471,6 +488,7 @@ module.exports = {
   cerrarSesion: cerrarSesion,
   cerrarSesionesDe: cerrarSesionesDe,
   purgarSesiones: purgarSesiones,
+  respaldar: respaldar,
   /* Se expone para que el alta y la baja de cuentas dejen el
      mismo rastro que las cotizaciones */
   anotar: anotar,

@@ -20,6 +20,7 @@ const path = require("path");
 const fs = require("fs");
 const db = require("./db");
 const auth = require("./auth");
+const exportar = require("./exportar");
 
 const PUERTO = Number(process.env.PORT) || 3000;
 
@@ -233,7 +234,9 @@ const PRIVADOS = {
   "/index.html": ["index.html", "text/html; charset=utf-8"],
   "/app.js": ["app.js", "text/javascript; charset=utf-8"],
   "/almacen.js": ["almacen.js", "text/javascript; charset=utf-8"],
-  "/sesion.js": ["sesion.js", "text/javascript; charset=utf-8"]
+  "/sesion.js": ["sesion.js", "text/javascript; charset=utf-8"],
+  /* El mismo archivo que usa el servidor para el PDF */
+  "/calculos.js": ["calculos.js", "text/javascript; charset=utf-8"]
 };
 
 /* La pantalla de cuentas. No basta con tener sesión: hay que
@@ -658,6 +661,211 @@ app.delete("/api/usuarios/:usuario", exigirAdmin, function (req, res) {
   res.json({ ok: true });
 });
 
+/* =========================================================
+   Informe en PDF
+
+   Los filtros llegan tal cual los tenía la pantalla, para que
+   el papel muestre lo que la persona estaba mirando. El PDF
+   se arma con calculos.js, el mismo módulo que usa app.js: si
+   cada uno sumara por su lado, un día no coincidirían.
+
+   Restringido a administración porque así se pidió. Conviene
+   ser claro sobre lo que eso significa: no oculta datos, ya
+   que quien captura ve las mismas cifras en pantalla. Lo que
+   controla es quién emite el documento con formato.
+   ========================================================= */
+app.get("/api/exportar/pdf", exigirAdmin, function (req, res) {
+  /* "todos" es el valor que usa la pantalla para "sin filtro".
+     Cualquier otra cosa se valida como número; un mes de 99 o
+     un año de texto se tratan como si no hubiera filtro. */
+  function filtro(valor, minimo, maximo) {
+    if (valor === undefined || valor === null || valor === "" || valor === "todos") {
+      return "todos";
+    }
+    const n = Number(valor);
+    if (!Number.isInteger(n) || n < minimo || n > maximo) return "todos";
+    return n;
+  }
+
+  const filtros = {
+    mes: filtro(req.query.mes, 0, 11),
+    anio: filtro(req.query.anio, 1900, 3000),
+    texto: String(req.query.buscar || "").slice(0, MAX_TEXTO)
+  };
+
+  const nombre = exportar.nombreArchivo(filtros);
+
+  res.type("application/pdf");
+  res.set("Content-Disposition", 'attachment; filename="' + nombre + '"');
+  res.set("Cache-Control", "no-store");
+
+  try {
+    exportar.informe(res, {
+      registros: db.listar(),
+      metas: db.leerMetas(),
+      filtros: filtros,
+      quien: req.sesion.nombre
+    });
+  } catch (e) {
+    /* Si falla antes de mandar nada todavía se puede responder
+       un error; si ya empezó a escribir el PDF, lo único que
+       queda es cortar, porque las cabeceras ya salieron */
+    console.error("Error armando el PDF:", e.message);
+    if (!res.headersSent) {
+      return res.status(500).type("application/json")
+        .send(JSON.stringify({ error: "No se pudo generar el informe." }));
+    }
+    res.end();
+  }
+});
+
+/* =========================================================
+   Respaldo de la base
+
+   Hay dos caminos y los dos hacen exactamente lo mismo, porque
+   comparten crearRespaldo():
+
+   - Automático, una vez al día. Es el que de verdad protege:
+     no depende de que nadie se acuerde.
+   - Manual, con el botón de la pantalla de cuentas. Sirve para
+     llevarse una copia justo antes de tocar algo delicado.
+
+   La copia se queda además en el servidor. Eso cubre un caso
+   distinto al de la descarga: deshacer un borrado del lunes
+   sin depender de que alguien tuviera el archivo guardado.
+   ========================================================= */
+const CARPETA_RESPALDOS = path.join(CARPETA_DATOS, "respaldos");
+const DIAS_RESPALDO = 30;
+
+/* Hora a la que corre el respaldo diario. De madrugada porque
+   VACUUM INTO lee la base entera y conviene que no coincida
+   con nadie capturando. */
+const HORA_RESPALDO = (function () {
+  const h = Number(process.env.COTIZACIONES_RESPALDO_HORA);
+  return Number.isInteger(h) && h >= 0 && h <= 23 ? h : 3;
+})();
+
+/* Escape para apagarlo sin tocar el código */
+const RESPALDO_AUTOMATICO = process.env.COTIZACIONES_RESPALDO !== "0";
+
+/* "2026-09-04T13-05-22" — sin dos puntos, que Windows no
+   admite en nombres de archivo */
+function marcaDeTiempo() {
+  return new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+}
+
+/* Los respaldos se nombran por fecha, así que el día que
+   cubren se lee del propio nombre: "cotizaciones-2026-09-04..."
+   Se usa el nombre y no la fecha del archivo porque copiar o
+   restaurar una carpeta cambia las fechas del sistema. */
+function diaDelRespaldo(nombre) {
+  const m = /^cotizaciones-(\d{4}-\d{2}-\d{2})T/.exec(nombre);
+  return m ? m[1] : null;
+}
+
+function hoyISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function listarRespaldos() {
+  try {
+    return fs.readdirSync(CARPETA_RESPALDOS)
+      .filter(function (n) { return n.indexOf("cotizaciones-") === 0 && /\.db$/.test(n); });
+  } catch (e) {
+    /* Sin carpeta todavía no hay respaldos, que no es un error */
+    return [];
+  }
+}
+
+/* Crea la copia y limpia las viejas. Devuelve la ruta.
+   Lanza si algo falla: quien llama decide qué hacer, porque
+   no es lo mismo fallar en una descarga que en la tarea
+   nocturna. */
+function crearRespaldo(quien) {
+  const nombre = "cotizaciones-" + marcaDeTiempo() + ".db";
+  const ruta = path.join(CARPETA_RESPALDOS, nombre);
+
+  fs.mkdirSync(CARPETA_RESPALDOS, { recursive: true });
+  db.respaldar(ruta);
+
+  const borrados = purgarRespaldos();
+  db.anotar(quien, "respaldo", nombre,
+    borrados ? "se borraron " + borrados + " respaldos de más de " + DIAS_RESPALDO + " días" : "");
+
+  return ruta;
+}
+
+function purgarRespaldos() {
+  const limite = Date.now() - DIAS_RESPALDO * 24 * 3600 * 1000;
+  let borrados = 0;
+
+  let archivos;
+  try {
+    archivos = fs.readdirSync(CARPETA_RESPALDOS);
+  } catch (e) {
+    return 0;
+  }
+
+  archivos.forEach(function (nombre) {
+    if (nombre.indexOf("cotizaciones-") !== 0 || !/\.db$/.test(nombre)) return;
+
+    const ruta = path.join(CARPETA_RESPALDOS, nombre);
+    try {
+      if (fs.statSync(ruta).mtimeMs < limite) {
+        fs.unlinkSync(ruta);
+        borrados++;
+      }
+    } catch (e) {
+      /* Otro proceso pudo llevárselo entre el listado y el
+         borrado; no es motivo para fallar el respaldo */
+    }
+  });
+
+  return borrados;
+}
+
+app.get("/api/backup", exigirAdmin, function (req, res) {
+  let ruta;
+
+  try {
+    ruta = crearRespaldo(req.sesion.usuario);
+  } catch (e) {
+    console.error("Error respaldando:", e.message);
+    return res.status(500).json({ error: "No se pudo crear el respaldo." });
+  }
+
+  res.download(ruta, path.basename(ruta), function (e) {
+    /* La copia se queda en el servidor a propósito, se haya
+       descargado bien o no: es la que permite volver atrás */
+    if (e && !res.headersSent) {
+      console.error("Error enviando el respaldo:", e.message);
+    }
+  });
+});
+
+/* Qué respaldos hay guardados, para que la pantalla pueda
+   decir cuándo fue el último */
+app.get("/api/backup/lista", exigirAdmin, function (req, res) {
+  const archivos = listarRespaldos()
+    .map(function (n) {
+      try {
+        const s = fs.statSync(path.join(CARPETA_RESPALDOS, n));
+        return { nombre: n, bytes: s.size, fecha: new Date(s.mtimeMs).toISOString() };
+      } catch (e) {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort(function (a, b) { return b.fecha.localeCompare(a.fecha); });
+
+  res.json({
+    dias: DIAS_RESPALDO,
+    automatico: RESPALDO_AUTOMATICO,
+    hora: HORA_RESPALDO,
+    respaldos: archivos
+  });
+});
+
 /* La bitácora solo la ve quien administra */
 app.get("/api/bitacora", exigirAdmin, function (req, res) {
   res.json(db.leerBitacora(Number(req.query.limite) || 200));
@@ -701,6 +909,79 @@ if (db.contarUsuarios() === 0) {
 db.purgarSesiones();
 const limpieza = setInterval(db.purgarSesiones, 3600 * 1000);
 limpieza.unref();
+
+/* =========================================================
+   Respaldo diario
+
+   Se programa dentro del propio proceso en vez de dejarlo al
+   Programador de tareas de Windows. Así el respaldo viaja con
+   la aplicación: quien la instale no tiene que acordarse de
+   configurar nada aparte, que es justo lo que se olvida y
+   deja a un servidor entero sin copias durante meses.
+
+   Dos comportamientos que no son obvios pero importan:
+
+   - Al arrancar se comprueba si hoy ya hay respaldo. Si la
+     máquina estuvo apagada a las 3 de la madrugada, ese día
+     se habría perdido; así se recupera en cuanto encienda.
+
+   - El día se lee del nombre del archivo, no de su fecha en
+     disco, porque copiar o restaurar la carpeta de respaldos
+     cambia las fechas del sistema y haría creer que hay copia
+     de hoy cuando no la hay.
+   ========================================================= */
+function respaldoDiario(motivo) {
+  const yaHayDeHoy = listarRespaldos().some(function (n) {
+    return diaDelRespaldo(n) === hoyISO();
+  });
+
+  if (yaHayDeHoy) return false;
+
+  try {
+    const ruta = crearRespaldo("automático");
+    console.log("Respaldo " + motivo + ":", path.basename(ruta));
+    return true;
+  } catch (e) {
+    /* Un respaldo fallido no debe tumbar el servidor: se avisa
+       fuerte y se sigue atendiendo, que es el mal menor */
+    console.error("FALLO EL RESPALDO AUTOMATICO:", e.message);
+    return false;
+  }
+}
+
+function programarRespaldo() {
+  const ahora = new Date();
+  const proximo = new Date(ahora);
+
+  proximo.setHours(HORA_RESPALDO, 0, 0, 0);
+  if (proximo <= ahora) proximo.setDate(proximo.getDate() + 1);
+
+  const espera = proximo.getTime() - ahora.getTime();
+
+  /* setTimeout no admite esperas de más de 24,8 días, y aquí
+     nunca pasa de 24 horas, así que no hace falta trocearlo */
+  const temporizador = setTimeout(function () {
+    respaldoDiario("diario");
+    programarRespaldo();
+  }, espera);
+
+  /* unref para que un respaldo pendiente no impida que el
+     proceso termine cuando se le pide cerrar */
+  temporizador.unref();
+
+  return proximo;
+}
+
+if (RESPALDO_AUTOMATICO) {
+  respaldoDiario("de arranque");
+  const proximo = programarRespaldo();
+  console.log("Respaldo automático diario a las " +
+    String(HORA_RESPALDO).padStart(2, "0") + ":00 · el próximo, el " +
+    proximo.toLocaleDateString("es-BO") + " · se conservan " +
+    DIAS_RESPALDO + " días");
+} else {
+  console.log("Respaldo automático desactivado (COTIZACIONES_RESPALDO=0)");
+}
 
 const servidor = app.listen(PUERTO, HOST, function () {
   console.log("Dashboard de cotizaciones escuchando en " + HOST + ":" + PUERTO);
