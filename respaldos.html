@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>Respaldos</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <h1>Respaldos</h1>
+      <div class="topbar-acciones">
+        <span class="sesion-nombre" id="sesionNombre"></span>
+        <a class="btn btn-plano" href="/index.html">Volver al dashboard</a>
+        <a class="btn btn-plano" href="/admin.html">Usuarios</a>
+        <button type="button" class="btn btn-plano" id="btnSalir">Salir</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container pantalla-respaldos">
+
+    <!-- Errores y confirmaciones de cualquier operación -->
+    <div class="aviso aviso-error" id="aviso" hidden></div>
+    <div class="aviso aviso-ok" id="avisoOk" hidden></div>
+
+    <!-- Contra qué se compara cada respaldo -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Base en uso</h2>
+        <span class="panel-sub">Lo que el dashboard muestra ahora</span>
+      </div>
+      <div class="resumen-base" id="resumenActual">Cargando...</div>
+      <p class="respaldo-estado" id="respaldoAuto"></p>
+    </section>
+
+    <div class="respaldo-bloques">
+
+      <!-- Copia de ahora -->
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Copia de ahora</h2>
+        </div>
+        <p class="respaldo-nota">
+          Guarda una copia de la base en el servidor y te la descarga en un solo
+          archivo <code>.db</code>. Sirve para llevarte una antes de tocar algo
+          delicado.
+        </p>
+        <div class="respaldo-accion">
+          <button type="button" class="btn btn-primary" id="btnRespaldo">
+            Crear y descargar respaldo
+          </button>
+        </div>
+      </section>
+
+      <!-- Subida -->
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Subir un respaldo</h2>
+        </div>
+        <p class="respaldo-nota">
+          Un archivo <code>.db</code> descargado de este u otro servidor. Se
+          agrega a la lista de abajo y <strong>no reemplaza nada</strong> hasta
+          que pulses Restaurar en su fila.
+        </p>
+        <form class="respaldo-accion" id="formSubir">
+          <input type="file" id="archivo" accept=".db" required>
+          <button type="submit" class="btn btn-primary" id="btnSubir">Subir</button>
+        </form>
+      </section>
+
+    </div>
+
+    <!-- Listado -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Respaldos guardados en el servidor</h2>
+        <span class="panel-sub" id="conteo"></span>
+      </div>
+
+      <div class="tabla-scroll">
+        <table class="tabla tabla-respaldos">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Origen</th>
+              <th class="num">Cotizaciones</th>
+              <th>Meses</th>
+              <th class="num">Monto total</th>
+              <th class="num">Tamaño</th>
+              <th class="center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyRespaldos"></tbody>
+        </table>
+      </div>
+
+      <p class="panel-vacio" id="cargando">Cargando...</p>
+    </section>
+
+  </main>
+
+  <!-- Confirmación de restauración -->
+  <div class="modal" id="modalRestaurar" hidden>
+    <div class="modal-caja modal-ancha">
+      <h2>¿Restaurar este respaldo?</h2>
+
+      <div class="comparativa">
+        <div class="comparativa-col">
+          <span class="comparativa-titulo">Base en uso</span>
+          <div id="compActual"></div>
+        </div>
+        <div class="comparativa-col destacada">
+          <span class="comparativa-titulo" id="compTitulo">Respaldo</span>
+          <div id="compRespaldo"></div>
+        </div>
+      </div>
+
+      <ul class="restaurar-avisos">
+        <li>Antes de reemplazar nada se guarda una copia de la base en uso.
+            Aparecerá en la lista y se puede restaurar si te equivocas.</li>
+        <li>Todo vuelve a como estaba en el respaldo: cotizaciones, metas,
+            cuentas y contraseñas.</li>
+        <li>Todos, incluido tú, tendrán que volver a iniciar sesión.
+            Podrán entrar como administración: <strong id="compAdmins"></strong>.</li>
+      </ul>
+
+      <p class="modal-alerta" id="restaurarAlerta" hidden></p>
+      <p class="modal-error" id="restaurarError" hidden></p>
+
+      <div class="modal-acciones">
+        <button type="button" class="btn" id="btnRestaurarCancelar">Cancelar</button>
+        <button type="button" class="btn btn-peligro" id="btnRestaurarConfirmar">Restaurar</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="pie">
+    <div class="container">
+      <span>
+        Los respaldos se guardan en la carpeta <code>respaldos</code>, junto a la
+        base del servidor, y se borran solos al cumplir
+        <strong id="respaldoDias">30</strong> días.
+      </span>
+    </div>
+  </footer>
+
+  <script src="respaldos.js"></script>
+</body>
+</html>

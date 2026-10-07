@@ -166,6 +166,7 @@ body {
 input[type="text"],
 input[type="number"],
 input[type="search"],
+input[type="date"],
 select {
   padding: 8px 10px;
   border: 1px solid var(--borde);
@@ -568,7 +569,8 @@ input:focus, select:focus {
 }
 
 .modal-caja input[type="text"],
-.modal-caja input[type="number"] { margin-bottom: 14px; }
+.modal-caja input[type="number"],
+.modal-caja input[type="date"] { margin-bottom: 14px; }
 
 .check-fila {
   display: flex;
@@ -754,6 +756,18 @@ input:focus, select:focus {
 }
 
 .aviso-ok[hidden] { display: none !important; }
+
+/* Fijo abajo para que se vea sin importar dónde esté el scroll */
+.aviso-flotante {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  max-width: 520px;
+  margin: 0 auto;
+  z-index: 20;
+  box-shadow: 0 4px 14px rgba(17, 24, 39, 0.15);
+}
 
 /* El alta cabe en dos columnas en pantalla ancha y se apila
    sola en pantalla angosta */
@@ -949,14 +963,172 @@ input:focus, select:focus {
    es el único indicio de que hay algo legible en pantalla */
 .clave-ojo[aria-pressed="true"] { color: var(--azul); }
 
-/* ---------- Respaldo ---------- */
-.respaldo-cuerpo {
+/* ---------- Respaldos ---------- */
+.pantalla-respaldos { padding-bottom: 40px; }
+
+.pantalla-respaldos > .panel,
+.pantalla-respaldos > .respaldo-bloques { margin-top: 18px; }
+
+/* Copia de ahora y subida, lado a lado; el botón de cada una
+   queda al pie para que los dos se alineen */
+.respaldo-bloques {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.respaldo-bloques .panel {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 16px 0 4px;
+  flex-direction: column;
+}
+
+.respaldo-bloques .panel-head { margin-bottom: 10px; }
+
+.respaldo-accion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
+  margin: auto 0 0;
+  padding-top: 16px;
+}
+
+.respaldo-accion input[type="file"] {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.resumen-cifra {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.resumen-meses {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.resumen-meses li {
+  padding: 3px 10px;
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  background: #fafbfc;
+}
+
+.resumen-vacio {
+  margin: 0;
+  font-size: 13px;
+  color: var(--texto-suave);
+}
+
+.tabla-respaldos { min-width: 920px; }
+
+.tabla-respaldos .acciones { justify-content: flex-end; }
+
+.tabla td.respaldo-meses {
+  white-space: normal;
+  min-width: 200px;
+  font-size: 13px;
+}
+
+.respaldo-sub {
+  display: block;
+  font-size: 12px;
+  color: var(--texto-suave);
+}
+
+.tabla td.respaldo-error {
+  white-space: normal;
+  font-size: 13px;
+  color: var(--rojo);
+}
+
+/* El recién subido se marca: es el que se va a revisar */
+.fila-nueva td { background: #eef2ff; }
+.tabla tbody tr.fila-nueva:hover td { background: #e0e7ff; }
+
+.btn-mini.restaurar { color: var(--azul-oscuro); }
+
+.btn-peligro {
+  background: var(--rojo);
+  border-color: var(--rojo);
+  color: #fff;
+}
+
+.btn-peligro:hover { background: #991b1b; }
+
+.btn-peligro:disabled,
+.btn-peligro:disabled:hover {
+  background: var(--rojo);
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* Confirmación: la base en uso frente al respaldo */
+.modal-caja.modal-ancha { max-width: 620px; }
+
+.comparativa {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.comparativa-col {
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.comparativa-col.destacada {
+  border-color: var(--azul);
+  background: #f5f8ff;
+}
+
+.comparativa-titulo {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--texto-suave);
+}
+
+.comparativa .resumen-cifra { font-size: 15px; }
+
+.restaurar-avisos {
+  margin: 0 0 16px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--texto-suave);
+  line-height: 1.5;
+}
+
+.restaurar-avisos li + li { margin-top: 6px; }
+
+.restaurar-avisos strong { color: var(--texto); }
+
+.modal-alerta {
+  margin: 0 0 14px;
+  padding: 9px 11px;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #78350f;
+  font-size: 13px;
+}
+
+.modal-alerta[hidden] { display: none !important; }
+
+@media (max-width: 700px) {
+  .respaldo-bloques,
+  .comparativa { grid-template-columns: 1fr; }
 }
 
 .respaldo-nota {

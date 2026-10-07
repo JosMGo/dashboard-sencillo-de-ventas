@@ -20,6 +20,7 @@
           <!-- Solo para el rol admin; el servidor lo niega igual -->
           <button type="button" class="btn btn-plano" id="btnExportar" hidden>Exportar PDF</button>
           <a class="btn btn-plano" id="enlaceUsuarios" href="/admin.html" hidden>Usuarios</a>
+          <a class="btn btn-plano" id="enlaceRespaldos" href="/respaldos.html" hidden>Respaldos</a>
           <button type="button" class="btn btn-plano" id="btnSalir">Salir</button>
         </span>
         <button id="btnNueva" class="btn btn-primary">+ Nueva cotización</button>
@@ -237,6 +238,10 @@
       <form id="formulario">
         <input type="hidden" id="registroId">
 
+        <label for="fecha">Fecha</label>
+        <input type="date" id="fecha" required min="2000-01-01">
+        <p class="modal-nota">Puede ser de un mes o un año anterior. No se admiten fechas futuras.</p>
+
         <label for="nombre">Cotización / Proyecto</label>
         <input type="text" id="nombre" required placeholder="Ej. Proyecto página web">
 
@@ -260,6 +265,11 @@
       </form>
     </div>
   </div>
+
+  <!-- Aparece unos segundos al guardar una cotización en un mes
+       que el filtro actual no muestra; sin él parece que no se
+       guardó -->
+  <div class="aviso aviso-ok aviso-flotante" id="avisoFecha" role="status" hidden></div>
 
   <footer class="pie">
     <div class="container">

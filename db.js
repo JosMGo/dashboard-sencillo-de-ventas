@@ -14,6 +14,7 @@
    máquinas distintas: SQLite exige disco local.
    ========================================================= */
 
+const fs = require("fs");
 const path = require("path");
 const { DatabaseSync } = require("node:sqlite");
 
@@ -26,6 +27,14 @@ const AUTOR_ESCRITORIO = "escritorio";
 
 function ahora() {
   return new Date().toISOString();
+}
+
+/* "28/09/2026" en la hora local del equipo, para la bitácora */
+function fechaCorta(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  return String(d.getDate()).padStart(2, "0") + "/" +
+    String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
 }
 
 function abrir(carpetaDatos) {
@@ -223,12 +232,23 @@ function crear(registro, usuario) {
 function actualizar(registro, usuario) {
   const fila = aFila(registro);
   const autor = String(usuario || AUTOR_ESCRITORIO);
+  const previo = obtener(fila.id);
+
+  /* La fecha es la de la cotización y se puede corregir: es lo
+     que permite pasar a septiembre algo capturado el 1 de
+     octubre. Lo que no se toca nunca es el autor original ni
+     creado_en, que dicen cuándo se capturó de verdad.
+
+     Si no llega fecha se conserva la que había. aFila pondría
+     "ahora", y eso mudaría la cotización al mes en curso sin
+     que nadie lo pidiera. */
+  const fecha = registro.fecha ? fila.fecha : null;
 
   /* Solo se mandan los campos que usa el UPDATE: node:sqlite
-     no admite parámetros de más. La fecha y el autor original
-     no se modifican nunca. */
+     no admite parámetros de más. */
   const r = db.prepare(
     "UPDATE registros SET nombre = :nombre, empresa = :empresa, monto = :monto, " +
+    "fecha = COALESCE(:fecha, fecha), " +
     "venta = :venta, cobro = :cobro, actualizado_en = :actualizado_en, " +
     "actualizado_por = :actualizado_por WHERE id = :id"
   ).run({
@@ -236,6 +256,7 @@ function actualizar(registro, usuario) {
     nombre: fila.nombre,
     empresa: fila.empresa,
     monto: fila.monto,
+    fecha: fecha,
     venta: fila.venta,
     cobro: fila.cobro,
     actualizado_en: ahora(),
@@ -243,7 +264,15 @@ function actualizar(registro, usuario) {
   });
 
   if (r.changes > 0) {
-    anotar(autor, "actualizar", fila.id, fila.empresa + " · " + fila.nombre);
+    let detalle = fila.empresa + " · " + fila.nombre;
+
+    /* Cambiar la fecha pasa el monto de un mes a otro, así que
+       queda anotado de dónde a dónde */
+    if (previo && fecha && fechaCorta(previo.fecha) !== fechaCorta(fecha)) {
+      detalle += " · fecha " + fechaCorta(previo.fecha) + " → " + fechaCorta(fecha);
+    }
+
+    anotar(autor, "actualizar", fila.id, detalle);
   }
 
   return r.changes > 0;
@@ -433,6 +462,241 @@ function respaldar(rutaDestino) {
   return rutaDestino;
 }
 
+/* ---------------------------------------------------------
+   Leer un respaldo sin restaurarlo
+
+   Cada archivo se abre con su propia conexión y se cierra al
+   terminar: la base en uso no se entera de que alguien está
+   mirando una copia.
+   --------------------------------------------------------- */
+
+/* Un error cuyo mensaje se le puede enseñar tal cual a quien
+   administra. Los demás se resumen en uno genérico. */
+function rechazo(mensaje) {
+  const e = new Error(mensaje);
+  e.paraMostrar = true;
+  return e;
+}
+
+/* Las columnas sin las que abrir() no puede trabajar. Un
+   archivo con una tabla "registros" de otro programa pasaría
+   la revisión de tablas y rompería el servidor al abrirlo. */
+const COLUMNAS_NECESARIAS = {
+  registros: ["id", "nombre", "empresa", "monto", "fecha", "venta", "cobro"],
+  usuarios: ["usuario", "nombre", "hash", "rol", "activo"]
+};
+
+/* Lo justo para reconocer una base de un vistazo: cuántas
+   cotizaciones tiene, de qué meses y quién la administra.
+   Fue lo que faltó para distinguir la base real de la de
+   prueba cuando las dos estaban en la misma carpeta. */
+function resumirConexion(conexion) {
+  Object.keys(COLUMNAS_NECESARIAS).forEach(function (tabla) {
+    const columnas = conexion.prepare("PRAGMA table_info(" + tabla + ")").all()
+      .map(function (c) { return c.name; });
+    const faltan = COLUMNAS_NECESARIAS[tabla].filter(function (c) {
+      return columnas.indexOf(c) === -1;
+    });
+    if (faltan.length) {
+      throw rechazo("No es una base de este sistema: " +
+        (columnas.length ? "a la tabla " + tabla + " le falta " + faltan.join(", ") + "."
+                         : "no tiene la tabla " + tabla + "."));
+    }
+  });
+
+  /* El mes se agrupa en la hora local del servidor, igual que
+     el dashboard. Cortar el texto ISO lo haría en UTC y una
+     venta del 30 a la noche saltaría al mes siguiente. */
+  const porMes = {};
+  let total = 0;
+  let cantidad = 0;
+
+  conexion.prepare("SELECT fecha, monto FROM registros").all().forEach(function (r) {
+    const d = new Date(r.fecha);
+    const periodo = isNaN(d.getTime())
+      ? "sin fecha"
+      : d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    const monto = Number(r.monto) || 0;
+
+    if (!porMes[periodo]) porMes[periodo] = { periodo: periodo, cantidad: 0, total: 0 };
+    porMes[periodo].cantidad++;
+    porMes[periodo].total += monto;
+    cantidad++;
+    total += monto;
+  });
+
+  const admins = conexion.prepare(
+    "SELECT usuario FROM usuarios WHERE rol = 'admin' AND activo = 1 ORDER BY usuario"
+  ).all().map(function (u) { return u.usuario; });
+
+  return {
+    cotizaciones: cantidad,
+    total: total,
+    meses: Object.keys(porMes).sort().map(function (p) { return porMes[p]; }),
+    cuentas: conexion.prepare("SELECT COUNT(*) AS n FROM usuarios").get().n,
+    admins: admins
+  };
+}
+
+/* completo = además de resumir, comprobar que el archivo está
+   sano y que alguien podría entrar después de restaurarlo.
+   Es lo que se pide antes de subir o restaurar; para el
+   listado basta el resumen, que es mucho más rápido. */
+function revisarConexion(conexion, completo) {
+  let resumen;
+
+  try {
+    if (completo) {
+      const r = conexion.prepare("PRAGMA integrity_check").get();
+      if (!r || r.integrity_check !== "ok") {
+        throw rechazo("El archivo está dañado: SQLite encontró errores al revisarlo.");
+      }
+    }
+    resumen = resumirConexion(conexion);
+  } catch (e) {
+    if (e.paraMostrar) throw e;
+    throw rechazo("El archivo no es una base de datos de este sistema, o está dañado.");
+  }
+
+  /* Sin una cuenta de administración activa, restaurar dejaría
+     a todo el mundo fuera, sin forma de entrar a deshacerlo */
+  if (completo && !resumen.admins.length) {
+    throw rechazo("Ese respaldo no tiene ninguna cuenta de administración activa: " +
+      "después de restaurarlo nadie podría entrar.");
+  }
+
+  return resumen;
+}
+
+function examinarArchivo(ruta, completo) {
+  let conexion;
+  try {
+    conexion = new DatabaseSync(String(ruta), { readOnly: true });
+  } catch (e) {
+    throw rechazo("El archivo no es una base de datos de este sistema, o está dañado.");
+  }
+
+  try {
+    return revisarConexion(conexion, completo);
+  } finally {
+    conexion.close();
+  }
+}
+
+function resumenActual() {
+  return resumirConexion(db);
+}
+
+/* Un archivo subido puede venir de cualquier lado, incluso
+   copiado a mano de una base en modo WAL. Pasarlo por VACUUM
+   INTO lo deja igual que un respaldo hecho aquí: un solo
+   archivo, compacto y sin -wal pendiente. */
+function importarArchivo(rutaOrigen, rutaDestino) {
+  let conexion;
+  try {
+    conexion = new DatabaseSync(String(rutaOrigen));
+  } catch (e) {
+    throw rechazo("El archivo no es una base de datos de este sistema, o está dañado.");
+  }
+
+  try {
+    const resumen = revisarConexion(conexion, true);
+    conexion.prepare("VACUUM INTO ?").run(String(rutaDestino));
+    return resumen;
+  } finally {
+    conexion.close();
+  }
+}
+
+/* ---------------------------------------------------------
+   Restauración
+
+   Cambia la base en uso por otro archivo, entera:
+   cotizaciones, metas, cuentas y bitácora.
+
+   Todo es síncrono de principio a fin, así que ninguna otra
+   petición alcanza a llegar con la base cerrada.
+
+   El orden es lo que evita perder datos:
+   1. El archivo se copia junto a la base con otro nombre. Si
+      eso falla, la base en uso ni se tocó.
+   2. Se vacía el -wal dentro de la base y se cierra. Así no
+      queda nada pendiente que perder, ni un -wal viejo que
+      SQLite le aplicaría al archivo nuevo (eso lo corrompe).
+   3. La base actual se aparta como .anterior y la nueva ocupa
+      su lugar. Se renombra en vez de copiar: es de un golpe.
+   4. Se abre la nueva, lo que de paso migra un respaldo viejo.
+      Si no abre, vuelve la anterior.
+   --------------------------------------------------------- */
+function borrarSiExiste(ruta) {
+  try {
+    fs.unlinkSync(ruta);
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
+  }
+}
+
+function restaurar(rutaOrigen) {
+  const carpeta = path.dirname(rutaArchivo);
+  const actual = rutaArchivo;
+  const nueva = actual + ".restaurando";
+  const anterior = actual + ".anterior";
+
+  fs.copyFileSync(String(rutaOrigen), nueva);
+
+  db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  db.close();
+  db = null;
+
+  try {
+    borrarSiExiste(actual + "-wal");
+    borrarSiExiste(actual + "-shm");
+    borrarSiExiste(anterior);
+    fs.renameSync(actual, anterior);
+  } catch (e) {
+    borrarSiExiste(nueva);
+    abrir(carpeta);
+    throw e;
+  }
+
+  try {
+    fs.renameSync(nueva, actual);
+    abrir(carpeta);
+  } catch (e) {
+    if (db) {
+      db.close();
+      db = null;
+    }
+    borrarSiExiste(actual + "-wal");
+    borrarSiExiste(actual + "-shm");
+    borrarSiExiste(actual);
+    fs.renameSync(anterior, actual);
+    abrir(carpeta);
+    throw e;
+  }
+
+  borrarSiExiste(anterior);
+
+  /* Las sesiones que trae el respaldo son de otro momento: una
+     cookie olvidada en algún navegador podría volver a valer.
+     Se empieza de cero y todos entran de nuevo. */
+  db.exec("DELETE FROM sesiones");
+}
+
+/* De dónde salió cada respaldo, según la bitácora. Solo
+   aparecen los que se hicieron con esta misma base: los que
+   llegaron de otro servidor no tienen rastro aquí. */
+function origenesDeRespaldos() {
+  const origenes = {};
+  db.prepare(
+    "SELECT registro, usuario, accion, detalle FROM bitacora " +
+    "WHERE accion IN ('respaldo', 'subida') ORDER BY id"
+  ).all().forEach(function (f) {
+    origenes[f.registro] = { usuario: f.usuario, accion: f.accion, detalle: f.detalle };
+  });
+  return origenes;
+}
+
 function purgarSesiones() {
   const r = db.prepare("DELETE FROM sesiones WHERE expira_en < ?").run(ahora());
   return r.changes;
@@ -489,6 +753,11 @@ module.exports = {
   cerrarSesionesDe: cerrarSesionesDe,
   purgarSesiones: purgarSesiones,
   respaldar: respaldar,
+  examinarArchivo: examinarArchivo,
+  resumenActual: resumenActual,
+  importarArchivo: importarArchivo,
+  restaurar: restaurar,
+  origenesDeRespaldos: origenesDeRespaldos,
   /* Se expone para que el alta y la baja de cuentas dejen el
      mismo rastro que las cotizaciones */
   anotar: anotar,

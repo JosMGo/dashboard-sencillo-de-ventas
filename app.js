@@ -44,6 +44,7 @@ const modal = document.getElementById("modal");
 const modalTitulo = document.getElementById("modalTitulo");
 const formulario = document.getElementById("formulario");
 const campoId = document.getElementById("registroId");
+const campoFecha = document.getElementById("fecha");
 const campoNombre = document.getElementById("nombre");
 const campoEmpresa = document.getElementById("empresa");
 const campoMonto = document.getElementById("monto");
@@ -95,6 +96,36 @@ function fechaLegible(iso) {
   const hora = String(d.getHours()).padStart(2, "0");
   const min = String(d.getMinutes()).padStart(2, "0");
   return dia + "/" + mes + "/" + anio + " " + hora + ":" + min;
+}
+
+/* "2026-09-28" en hora local, que es lo que entiende un
+   <input type="date">. toISOString no sirve aquí: da el día en
+   UTC, y en Bolivia desde las 20:00 ya marcaría el de mañana. */
+function aValorFecha(fecha) {
+  const d = new Date(fecha);
+  if (isNaN(d)) return "";
+  return d.getFullYear() + "-" +
+    String(d.getMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getDate()).padStart(2, "0");
+}
+
+/* Convierte el día elegido en el formulario a la fecha que se
+   guarda:
+
+   - Si no se cambió el día, la fecha queda exactamente igual.
+   - Hoy se guarda con la hora de ahora, como siempre.
+   - Otro día conserva la hora que ya tenía el registro; en una
+     cotización nueva se usan las 12:00. */
+function componerFecha(valor, anterior) {
+  if (anterior && valor === aValorFecha(anterior)) return anterior;
+
+  const ahora = new Date();
+  if (valor === aValorFecha(ahora)) return ahora.toISOString();
+
+  const p = valor.split("-").map(Number);
+  const hora = anterior ? new Date(anterior) : new Date(2000, 0, 1, 12, 0, 0);
+  return new Date(p[0], p[1] - 1, p[2],
+    hora.getHours(), hora.getMinutes(), hora.getSeconds()).toISOString();
 }
 
 /* Evita que un texto del usuario rompa el HTML */
@@ -452,10 +483,32 @@ function renderRanking(lista) {
 /* =========================================================
    Modal / formulario
    ========================================================= */
+
+/* Día que propone el formulario de alta. Si se está mirando un
+   mes ya pasado, se propone el último día de ese mes, porque es
+   ahí donde la persona quiere capturar; en cualquier otro caso,
+   hoy. */
+function fechaPropuesta() {
+  const hoy = new Date();
+  const mes = filtroMes.value;
+  const anio = filtroAnio.value === "todos" ? hoy.getFullYear() : Number(filtroAnio.value);
+
+  const ultimoDia = mes === "todos"
+    ? new Date(anio, 11, 31)
+    : new Date(anio, Number(mes) + 1, 0);
+
+  return ultimoDia < hoy ? ultimoDia : hoy;
+}
+
 function abrirModal(registro) {
+  /* Se recalcula cada vez: la página puede quedarse abierta de
+     un día para otro */
+  campoFecha.max = aValorFecha(new Date());
+
   if (registro) {
     modalTitulo.textContent = "Editar cotización";
     campoId.value = registro.id;
+    campoFecha.value = aValorFecha(registro.fecha);
     campoNombre.value = registro.nombre;
     campoEmpresa.value = registro.empresa;
     campoMonto.value = registro.monto;
@@ -465,6 +518,7 @@ function abrirModal(registro) {
     modalTitulo.textContent = "Nueva cotización";
     formulario.reset();
     campoId.value = "";
+    campoFecha.value = aValorFecha(fechaPropuesta());
   }
   modal.hidden = false;
   campoNombre.focus();
@@ -489,19 +543,22 @@ formulario.addEventListener("submit", function (e) {
   };
 
   let operacion;
+  let guardado;
 
   if (id) {
-    /* Editar: se conserva la fecha original */
+    /* Editar: la fecha solo cambia si se eligió otro día */
     const registro = registros.find(function (r) { return r.id === id; });
     if (!registro) return;
+    datos.fecha = componerFecha(campoFecha.value, registro.fecha);
     Object.assign(registro, datos);
     operacion = Almacen.actualizar(registro);
+    guardado = registro;
   } else {
-    /* Nuevo: la fecha y hora se generan automaticamente */
     datos.id = String(Date.now());
-    datos.fecha = new Date().toISOString();
+    datos.fecha = componerFecha(campoFecha.value, null);
     registros.push(datos);
     operacion = Almacen.crear(datos);
+    guardado = datos;
   }
 
   operacion.catch(alFallar);
@@ -509,7 +566,29 @@ formulario.addEventListener("submit", function (e) {
   llenarAnios();
   render();
   cerrarModal();
+  avisarSiNoSeVe(guardado);
 });
+
+/* Una cotización guardada en un mes distinto del que se está
+   mirando sale de la pantalla en cuanto se guarda. Sin este
+   aviso parece que se perdió. Solo cuentan el mes y el año: si
+   la oculta el buscador, es porque así se pidió. */
+let temporizadorAviso = null;
+
+function avisarSiNoSeVe(registro) {
+  const filtros = { mes: filtroMes.value, anio: filtroAnio.value };
+  if (Calculos.filtrar([registro], filtros).length > 0) return;
+
+  const d = new Date(registro.fecha);
+  const aviso = document.getElementById("avisoFecha");
+
+  aviso.textContent = "Cotización guardada en " + NOMBRES_MES[d.getMonth()] + " " +
+    d.getFullYear() + ". Cambia el filtro de mes y año para verla.";
+  aviso.hidden = false;
+
+  clearTimeout(temporizadorAviso);
+  temporizadorAviso = setTimeout(function () { aviso.hidden = true; }, 6000);
+}
 
 /* =========================================================
    Eventos

@@ -159,6 +159,13 @@ function exigirAdmin(req, res, next) {
 const MAX_TEXTO = 200;
 const MAX_MONTO = 1e12;
 
+/* La pantalla ya limita la fecha a hoy. Aquí se deja un día de
+   margen para no chocar con un reloj o un huso un poco distinto
+   entre el equipo de quien captura y el servidor: lo que se
+   quiere frenar son errores gordos, como un 2062. */
+const ANIO_MINIMO = 2000;
+const MARGEN_FUTURO = 24 * 3600 * 1000;
+
 function texto(valor, campo, errores, obligatorio) {
   const v = String(valor === undefined || valor === null ? "" : valor).trim();
 
@@ -194,12 +201,23 @@ function validarRegistro(cuerpo, conId) {
     r.monto = monto;
   }
 
-  const fecha = cuerpo.fecha ? new Date(cuerpo.fecha) : new Date();
-  if (isNaN(fecha.getTime())) {
-    errores.push("La fecha no es válida");
-    r.fecha = new Date().toISOString();
+  /* Sin fecha, el alta toma la de hoy (lo resuelve db.crear) y
+     la edición conserva la que ya tenía. Nunca se rellena aquí
+     con "ahora": en una edición eso mudaría la cotización al
+     mes en curso. */
+  if (cuerpo.fecha === undefined || cuerpo.fecha === null || cuerpo.fecha === "") {
+    r.fecha = null;
   } else {
-    r.fecha = fecha.toISOString();
+    const fecha = new Date(cuerpo.fecha);
+    if (isNaN(fecha.getTime())) {
+      errores.push("La fecha no es válida");
+    } else if (fecha.getFullYear() < ANIO_MINIMO) {
+      errores.push("La fecha no puede ser anterior al año " + ANIO_MINIMO);
+    } else if (fecha.getTime() > Date.now() + MARGEN_FUTURO) {
+      errores.push("La fecha no puede ser posterior a hoy");
+    } else {
+      r.fecha = fecha.toISOString();
+    }
   }
 
   r.venta = cuerpo.venta ? 1 : 0;
@@ -239,12 +257,14 @@ const PRIVADOS = {
   "/calculos.js": ["calculos.js", "text/javascript; charset=utf-8"]
 };
 
-/* La pantalla de cuentas. No basta con tener sesión: hay que
-   ser admin. Va aparte de PRIVADOS porque la respuesta cuando
-   falta permiso es distinta. */
+/* Las pantallas de cuentas y de respaldos. No basta con tener
+   sesión: hay que ser admin. Van aparte de PRIVADOS porque la
+   respuesta cuando falta permiso es distinta. */
 const SOLO_ADMIN = {
   "/admin.html": ["admin.html", "text/html; charset=utf-8"],
-  "/admin.js": ["admin.js", "text/javascript; charset=utf-8"]
+  "/admin.js": ["admin.js", "text/javascript; charset=utf-8"],
+  "/respaldos.html": ["respaldos.html", "text/html; charset=utf-8"],
+  "/respaldos.js": ["respaldos.js", "text/javascript; charset=utf-8"]
 };
 
 function entregar(res, entrada) {
@@ -293,7 +313,7 @@ Object.keys(PRIVADOS).forEach(function (ruta) {
 });
 
 Object.keys(SOLO_ADMIN).forEach(function (ruta) {
-  const esPagina = ruta === "/admin.html";
+  const esPagina = /\.html$/.test(ruta);
 
   app.get(ruta, function (req, res) {
     if (!req.sesion) {
@@ -727,8 +747,8 @@ app.get("/api/exportar/pdf", exigirAdmin, function (req, res) {
 
    - Automático, una vez al día. Es el que de verdad protege:
      no depende de que nadie se acuerde.
-   - Manual, con el botón de la pantalla de cuentas. Sirve para
-     llevarse una copia justo antes de tocar algo delicado.
+   - Manual, con el botón de la pantalla de respaldos. Sirve
+     para llevarse una copia justo antes de tocar algo delicado.
 
    La copia se queda además en el servidor. Eso cubre un caso
    distinto al de la descarga: deshacer un borrado del lunes
@@ -767,30 +787,62 @@ function hoyISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/* Entran en la lista los respaldos hechos aquí y los subidos
+   desde la pantalla. Cualquier otro archivo de la carpeta se
+   ignora, incluidos los -wal o -shm que alguien deje junto. */
+function esRespaldo(nombre) {
+  return /^(cotizaciones|subido)-.*\.db$/.test(nombre);
+}
+
 function listarRespaldos() {
   try {
-    return fs.readdirSync(CARPETA_RESPALDOS)
-      .filter(function (n) { return n.indexOf("cotizaciones-") === 0 && /\.db$/.test(n); });
+    return fs.readdirSync(CARPETA_RESPALDOS).filter(esRespaldo);
   } catch (e) {
     /* Sin carpeta todavía no hay respaldos, que no es un error */
     return [];
   }
 }
 
+/* "cotizaciones-2026-10-01T20-14-55.db" → "2026-10-01T20:14:55.000Z".
+   La marca del nombre está en UTC, igual que toISOString. */
+function fechaDelNombre(nombre) {
+  const m = /^(?:cotizaciones|subido)-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})/.exec(nombre);
+  return m ? m[1] + "T" + m[2] + ":" + m[3] + ":" + m[4] + ".000Z" : null;
+}
+
 /* Crea la copia y limpia las viejas. Devuelve la ruta.
    Lanza si algo falla: quien llama decide qué hacer, porque
    no es lo mismo fallar en una descarga que en la tarea
-   nocturna. */
-function crearRespaldo(quien) {
-  const nombre = "cotizaciones-" + marcaDeTiempo() + ".db";
-  const ruta = path.join(CARPETA_RESPALDOS, nombre);
+   nocturna.
+
+   opciones.motivo  queda escrito en la bitácora
+   opciones.purgar  false para no borrar copias viejas */
+/* Dos copias en el mismo segundo, como un respaldo pulsado
+   justo antes de restaurar, chocarían de nombre, y VACUUM INTO
+   se niega a pisar un archivo. La segunda lleva un -2. */
+function nombreLibre(prefijo) {
+  const marca = marcaDeTiempo();
+  let nombre = prefijo + marca + ".db";
+  for (let i = 2; fs.existsSync(path.join(CARPETA_RESPALDOS, nombre)); i++) {
+    nombre = prefijo + marca + "-" + i + ".db";
+  }
+  return nombre;
+}
+
+function crearRespaldo(quien, opciones) {
+  const op = opciones || {};
 
   fs.mkdirSync(CARPETA_RESPALDOS, { recursive: true });
+
+  const nombre = nombreLibre("cotizaciones-");
+  const ruta = path.join(CARPETA_RESPALDOS, nombre);
   db.respaldar(ruta);
 
-  const borrados = purgarRespaldos();
-  db.anotar(quien, "respaldo", nombre,
-    borrados ? "se borraron " + borrados + " respaldos de más de " + DIAS_RESPALDO + " días" : "");
+  const borrados = op.purgar === false ? 0 : purgarRespaldos();
+  const notas = [];
+  if (op.motivo) notas.push(op.motivo);
+  if (borrados) notas.push("se borraron " + borrados + " respaldos de más de " + DIAS_RESPALDO + " días");
+  db.anotar(quien, "respaldo", nombre, notas.join(" · "));
 
   return ruta;
 }
@@ -807,7 +859,7 @@ function purgarRespaldos() {
   }
 
   archivos.forEach(function (nombre) {
-    if (nombre.indexOf("cotizaciones-") !== 0 || !/\.db$/.test(nombre)) return;
+    if (!esRespaldo(nombre)) return;
 
     const ruta = path.join(CARPETA_RESPALDOS, nombre);
     try {
@@ -822,6 +874,23 @@ function purgarRespaldos() {
   });
 
   return borrados;
+}
+
+/* Solo se aceptan nombres que estén en la carpeta tal cual.
+   Comparar contra el listado, y no armar la ruta con lo que
+   llega, es lo que impide pedir "../cotizaciones.db" o
+   cualquier otro archivo del servidor. */
+function rutaDeRespaldo(nombre) {
+  const n = String(nombre || "");
+  return listarRespaldos().indexOf(n) === -1 ? null : path.join(CARPETA_RESPALDOS, n);
+}
+
+function borrarSinQueja(ruta) {
+  try {
+    fs.unlinkSync(ruta);
+  } catch (e) {
+    /* Si no estaba, mejor */
+  }
 }
 
 app.get("/api/backup", exigirAdmin, function (req, res) {
@@ -843,17 +912,58 @@ app.get("/api/backup", exigirAdmin, function (req, res) {
   });
 });
 
-/* Qué respaldos hay guardados, para que la pantalla pueda
-   decir cuándo fue el último */
+/* Descargar una copia que ya está guardada, sin crear otra */
+app.get("/api/backup/archivo/:nombre", exigirAdmin, function (req, res) {
+  const ruta = rutaDeRespaldo(req.params.nombre);
+  if (!ruta) {
+    return res.status(404).json({ error: "Ese respaldo ya no está en el servidor." });
+  }
+
+  res.download(ruta, path.basename(ruta), function (e) {
+    if (!e) return;
+    console.error("Error enviando el respaldo:", e.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "No se pudo enviar el respaldo." });
+    }
+  });
+});
+
+/* Qué respaldos hay guardados y qué tiene cada uno. Cada
+   archivo se abre para resumirlo: con unas decenas de copias
+   pequeñas es cuestión de milisegundos, y es lo que permite
+   elegir la buena sin tener que restaurarla para mirar. */
 app.get("/api/backup/lista", exigirAdmin, function (req, res) {
-  const archivos = listarRespaldos()
+  const origenes = db.origenesDeRespaldos();
+
+  const respaldos = listarRespaldos()
     .map(function (n) {
+      const ruta = path.join(CARPETA_RESPALDOS, n);
+      let s;
       try {
-        const s = fs.statSync(path.join(CARPETA_RESPALDOS, n));
-        return { nombre: n, bytes: s.size, fecha: new Date(s.mtimeMs).toISOString() };
+        s = fs.statSync(ruta);
       } catch (e) {
         return null;
       }
+
+      const item = {
+        nombre: n,
+        bytes: s.size,
+        /* Del nombre y no del disco: copiar la carpeta cambia
+           las fechas del sistema */
+        fecha: fechaDelNombre(n) || new Date(s.mtimeMs).toISOString(),
+        subido: n.indexOf("subido-") === 0,
+        origen: origenes[n] || null,
+        resumen: null,
+        error: ""
+      };
+
+      try {
+        item.resumen = db.examinarArchivo(ruta, false);
+      } catch (e) {
+        item.error = e.paraMostrar ? e.message : "No se pudo leer el archivo.";
+      }
+
+      return item;
     })
     .filter(Boolean)
     .sort(function (a, b) { return b.fecha.localeCompare(a.fecha); });
@@ -862,8 +972,161 @@ app.get("/api/backup/lista", exigirAdmin, function (req, res) {
     dias: DIAS_RESPALDO,
     automatico: RESPALDO_AUTOMATICO,
     hora: HORA_RESPALDO,
-    respaldos: archivos
+    actual: db.resumenActual(),
+    respaldos: respaldos
   });
+});
+
+/* =========================================================
+   Subir un respaldo
+
+   Llega como el cuerpo crudo de la petición y no como
+   formulario multipart: así no hace falta ninguna dependencia.
+   El lector va dentro de la ruta, después de exigirAdmin, para
+   que nadie sin permiso alcance a mandarle 50 MB al servidor.
+
+   Lo subido solo se agrega a la lista. Reemplazar la base es
+   otro paso, con su propia confirmación, después de ver el
+   resumen y comprobar que es el archivo que se quería.
+   ========================================================= */
+const LIMITE_SUBIDA_MB = 50;
+
+const leerArchivoSubido = express.raw({
+  type: "application/octet-stream",
+  limit: LIMITE_SUBIDA_MB + "mb"
+});
+
+/* Todo archivo SQLite empieza con estos 16 bytes. Mirarlos
+   antes de escribir nada al disco descarta de inmediato un
+   Excel o un PDF elegido por error. */
+const CABECERA_SQLITE = Buffer.from("SQLite format 3\0", "latin1");
+
+function nombreOriginal(req) {
+  let n = req.get("X-Nombre-Archivo") || "";
+  try {
+    n = decodeURIComponent(n);
+  } catch (e) {
+    /* Se queda como vino */
+  }
+  return n.slice(0, MAX_TEXTO);
+}
+
+app.post("/api/backup/subir", exigirAdmin, function (req, res) {
+  leerArchivoSubido(req, res, function (e) {
+    if (e) {
+      const grande = e.type === "entity.too.large";
+      return res.status(grande ? 413 : 400).json({
+        error: grande
+          ? "El archivo pasa de " + LIMITE_SUBIDA_MB + " MB."
+          : "No se pudo recibir el archivo."
+      });
+    }
+
+    const datos = req.body;
+    if (!Buffer.isBuffer(datos) || datos.length < CABECERA_SQLITE.length ||
+        !datos.subarray(0, CABECERA_SQLITE.length).equals(CABECERA_SQLITE)) {
+      return res.status(400).json({
+        error: "Ese archivo no es una base de datos. Elige un respaldo con extensión .db."
+      });
+    }
+
+    let nombre, destino, temporal, resumen;
+
+    try {
+      fs.mkdirSync(CARPETA_RESPALDOS, { recursive: true });
+      nombre = nombreLibre("subido-");
+      destino = path.join(CARPETA_RESPALDOS, nombre);
+      temporal = path.join(CARPETA_RESPALDOS, nombre.replace(/^subido-/, "subiendo-") + ".tmp");
+      fs.writeFileSync(temporal, datos);
+      resumen = db.importarArchivo(temporal, destino);
+    } catch (err) {
+      /* nombreLibre garantiza que destino no existía: si quedó
+         algo, es una copia a medias de esta misma subida */
+      if (destino) borrarSinQueja(destino);
+      if (err.paraMostrar) return res.status(400).json({ error: err.message });
+      console.error("Error subiendo un respaldo:", err.message);
+      return res.status(500).json({ error: "No se pudo guardar el archivo en el servidor." });
+    } finally {
+      /* El temporal y lo que SQLite haya dejado al abrirlo */
+      if (temporal) {
+        ["", "-wal", "-shm", "-journal"].forEach(function (sufijo) {
+          borrarSinQueja(temporal + sufijo);
+        });
+      }
+    }
+
+    const original = nombreOriginal(req);
+    db.anotar(req.sesion.usuario, "subida", nombre,
+      (original ? "archivo " + original + " · " : "") + resumen.cotizaciones + " cotizaciones");
+
+    res.json({ nombre: nombre, resumen: resumen });
+  });
+});
+
+/* =========================================================
+   Restaurar un respaldo
+
+   Reemplaza la base entera. Antes se guarda una copia de la
+   base en uso, así que restaurar el respaldo equivocado
+   también tiene vuelta atrás: basta con restaurar esa copia.
+
+   Todas las sesiones se cierran, incluida la de quien
+   restaura: las cuentas que valen ahora son las del respaldo.
+   ========================================================= */
+app.post("/api/backup/restaurar", exigirAdmin, function (req, res) {
+  const nombre = String((req.body && req.body.nombre) || "");
+  const ruta = rutaDeRespaldo(nombre);
+  const quien = req.sesion.usuario;
+
+  if (!ruta) {
+    return res.status(404).json({ error: "Ese respaldo ya no está en el servidor." });
+  }
+
+  let resumen;
+  try {
+    resumen = db.examinarArchivo(ruta, true);
+  } catch (e) {
+    if (e.paraMostrar) return res.status(400).json({ error: e.message });
+    console.error("Error revisando el respaldo:", e.message);
+    return res.status(500).json({ error: "No se pudo revisar el respaldo." });
+  }
+
+  /* Sin purga: podría llevarse justo el respaldo que se va a
+     restaurar, si acaba de cumplir los días */
+  let copiaPrevia;
+  try {
+    copiaPrevia = path.basename(crearRespaldo(quien, {
+      motivo: "antes de restaurar " + nombre,
+      purgar: false
+    }));
+  } catch (e) {
+    console.error("Error respaldando antes de restaurar:", e.message);
+    return res.status(500).json({
+      error: "No se pudo guardar una copia de la base en uso, así que no se restauró nada."
+    });
+  }
+
+  try {
+    db.restaurar(ruta);
+  } catch (e) {
+    console.error("Error restaurando", nombre + ":", e.message);
+    return res.status(500).json({
+      error: "No se pudo restaurar. La base en uso quedó como estaba."
+    });
+  }
+
+  /* La bitácora que vale ahora es la del respaldo, que no sabe
+     nada de esto. Sin estas dos líneas no quedaría rastro de
+     quién restauró ni de dónde quedó la copia previa. */
+  db.anotar(quien, "respaldo", copiaPrevia, "antes de restaurar " + nombre);
+  db.anotar(quien, "restauración", nombre,
+    resumen.cotizaciones + " cotizaciones · copia previa " + copiaPrevia);
+
+  console.log("Base restaurada desde " + nombre + " por " + quien +
+    " · copia previa: " + copiaPrevia);
+
+  borrarCookie(res);
+  res.json({ ok: true, copiaPrevia: copiaPrevia, resumen: resumen });
 });
 
 /* La bitácora solo la ve quien administra */

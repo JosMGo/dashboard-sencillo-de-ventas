@@ -12,6 +12,7 @@
   const etiqueta = document.getElementById("sesionNombre");
   const boton = document.getElementById("btnSalir");
   const enlaceUsuarios = document.getElementById("enlaceUsuarios");
+  const enlaceRespaldos = document.getElementById("enlaceRespaldos");
   const btnExportar = document.getElementById("btnExportar");
 
   if (!barra || !etiqueta || !boton) return;
@@ -31,11 +32,13 @@
     .then(function (sesion) {
       etiqueta.textContent = sesion.nombre;
 
-      /* La administración de cuentas solo se le ofrece a quien
-         puede usarla. Es una comodidad, no una defensa: quien
-         escriba /admin.html a mano es devuelto por el servidor. */
+      /* Cuentas y respaldos solo se le ofrecen a quien puede
+         usarlos. Es una comodidad, no una defensa: quien escriba
+         /admin.html o /respaldos.html a mano es devuelto por el
+         servidor. */
       if (sesion.rol === "admin") {
         if (enlaceUsuarios) enlaceUsuarios.hidden = false;
+        if (enlaceRespaldos) enlaceRespaldos.hidden = false;
         if (btnExportar) btnExportar.hidden = false;
       }
 

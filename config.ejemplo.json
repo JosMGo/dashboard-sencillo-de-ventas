@@ -1,4 +1,5 @@
 {
-  "_comentario": "Copia este archivo como config.json y ponlo junto a la aplicacion instalada. Usa barras normales (/) o barras dobles (\\\\) en la ruta.",
-  "carpetaDatos": "C:/DatosCotizaciones"
+  "_comentario": "Copia este archivo como config.json y ponlo junto a la aplicacion instalada. Usa barras normales (/) o barras dobles (\\\\) en la ruta. La clave puerto solo la usa el servidor web; la app de escritorio la ignora.",
+  "carpetaDatos": "C:/DatosCotizaciones",
+  "puerto": 3000
 }

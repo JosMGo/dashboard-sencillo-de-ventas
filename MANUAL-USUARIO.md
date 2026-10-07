@@ -33,9 +33,14 @@ contraseña: quien tiene acceso a la máquina tiene acceso al sistema.
 
 La cotización aparece de inmediato en la tabla y queda guardada.
 
-> **La fecha y la hora se ponen solas.** No hay campo de fecha porque el sistema toma la
-> del momento en que guardas. Si registras una cotización el 3 de septiembre a las 10:15,
-> esa queda como su fecha.
+> **La fecha viene puesta, pero se puede cambiar.** El campo **Fecha** propone hoy. Si
+> arriba tienes filtrado un mes ya pasado (por ejemplo Septiembre, estando en octubre),
+> propone el último día de ese mes. Puedes elegir cualquier día de un mes o un año
+> anterior; no se admiten fechas futuras.
+>
+> Si guardas una cotización en un mes distinto del que estás mirando, desaparece de la
+> pantalla y abajo aparece un aviso verde que dice en qué mes quedó. Cambia el filtro de
+> mes y año para verla.
 
 ### Cuidado con el nombre de la empresa
 
@@ -70,7 +75,9 @@ Se registra  →  se marca Venta  →  se marca Se cobró
 En la última columna de cada fila:
 
 - **Editar** — abre el formulario con los datos cargados. Puedes cambiar el nombre, la
-  empresa, el monto y las casillas. **La fecha original no cambia.**
+  empresa, el monto, las casillas y la **fecha**. Si no tocas la fecha, se queda tal como
+  estaba. Si la cambias, la cotización se pasa a ese mes y el cambio queda anotado en la
+  bitácora (fecha anterior y fecha nueva).
 - **Eliminar** — pide confirmación antes de borrar. Una vez confirmado, **no se puede
   deshacer**.
 
@@ -218,8 +225,12 @@ No. Todo funciona sin conexión.
 No. La información vive en la máquina donde está instalada la aplicación.
 
 **Registré una cotización con la fecha equivocada. ¿Puedo cambiarla?**
-No desde la aplicación: la fecha se asigna sola y no se edita. Habría que eliminar el
-registro y volver a crearlo.
+Sí. Pulsa **Editar** en esa fila, cambia la **Fecha** y guarda. No hace falta borrarla y
+volver a crearla: se conservan quién la registró y cuándo se capturó de verdad.
+
+**Ya pasó el mes. ¿Puedo seguir registrando cotizaciones del mes anterior?**
+Sí. Elige ese mes en el filtro de arriba y pulsa **+ Nueva cotización**: la fecha ya
+viene puesta en ese mes. Editar y eliminar funcionan igual en cualquier mes.
 
 **¿Qué pasa si me equivoco al escribir el nombre de una empresa?**
 Usa Editar en cada fila afectada y corrige el nombre. En cuanto todas las filas digan lo

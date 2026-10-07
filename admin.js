@@ -371,86 +371,6 @@
   });
 
   /* ---------------------------------------------------------
-     Respaldo
-
-     La descarga se hace navegando a la dirección, no con fetch:
-     el servidor responde con Content-Disposition y así el
-     navegador guarda el archivo sin que la página se mueva.
-
-     El listado se recarga después, con un margen, porque el
-     respaldo se crea en el servidor durante esa misma petición
-     y preguntarlo de inmediato lo encontraría a medias.
-     --------------------------------------------------------- */
-  const btnRespaldo = document.getElementById("btnRespaldo");
-  const respaldoUltimo = document.getElementById("respaldoUltimo");
-  const respaldoDias = document.getElementById("respaldoDias");
-  const respaldoAuto = document.getElementById("respaldoAuto");
-
-  function pesoLegible(bytes) {
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
-    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-  }
-
-  function cuandoLegible(iso) {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "";
-    return String(d.getDate()).padStart(2, "0") + "/" +
-           String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear() +
-           " a las " + String(d.getHours()).padStart(2, "0") + ":" +
-           String(d.getMinutes()).padStart(2, "0");
-  }
-
-  function cargarRespaldos() {
-    return pedir("/api/backup/lista").then(function (r) {
-      if (respaldoDias) respaldoDias.textContent = String(r.dias);
-
-      /* Que se vea si el automático está andando. Un panel que
-         solo enseña un botón deja creer que sin pulsarlo no hay
-         copias, y es al revés. */
-      if (respaldoAuto) {
-        if (r.automatico) {
-          respaldoAuto.textContent = "Respaldo automático activo, todos los días a las " +
-            String(r.hora).padStart(2, "0") + ":00.";
-          respaldoAuto.className = "respaldo-estado activo";
-        } else {
-          respaldoAuto.textContent = "El respaldo automático está desactivado. " +
-            "Las copias solo se crean pulsando el botón.";
-          respaldoAuto.className = "respaldo-estado apagado";
-        }
-      }
-
-      if (!r.respaldos.length) {
-        respaldoUltimo.textContent = "Todavía no hay ningún respaldo";
-        return;
-      }
-
-      const ultimo = r.respaldos[0];
-      respaldoUltimo.textContent =
-        r.respaldos.length + (r.respaldos.length === 1 ? " copia · " : " copias · ") +
-        "la última el " + cuandoLegible(ultimo.fecha) + " (" + pesoLegible(ultimo.bytes) + ")";
-    }).catch(function () {
-      respaldoUltimo.textContent = "";
-    });
-  }
-
-  btnRespaldo.addEventListener("click", function () {
-    limpiarAvisos();
-
-    btnRespaldo.disabled = true;
-    btnRespaldo.textContent = "Preparando...";
-
-    window.location.href = "/api/backup";
-
-    setTimeout(function () {
-      btnRespaldo.disabled = false;
-      btnRespaldo.textContent = "Descargar respaldo";
-      mostrarOk("Respaldo creado. Revisa tus descargas.");
-      cargarRespaldos();
-    }, 2500);
-  });
-
-  /* ---------------------------------------------------------
      Sesión y arranque
      --------------------------------------------------------- */
   document.getElementById("btnSalir").addEventListener("click", function () {
@@ -462,7 +382,7 @@
 
   pedir("/api/sesion").then(function (sesion) {
     document.getElementById("sesionNombre").textContent = sesion.nombre;
-    return Promise.all([cargar(), cargarRespaldos()]);
+    return cargar();
   }).catch(function (e) {
     mostrarError(texto(e));
   });

@@ -48,7 +48,8 @@ el guardado que corresponde.
 - Gráfica de barras "cotizado vs. vendido" por mes, sin librerías.
 - Ranking de las 5 empresas con mayor monto cotizado.
 - Buscador por empresa o proyecto, y filtros por mes y por año.
-- Fecha y hora automáticas al crear cada registro.
+- Fecha de cada cotización elegible al crearla o editarla (meses y años anteriores, nunca
+  futura). Propone hoy, o el mes que se esté mirando si ya pasó.
 - Casillas de **Venta** y **Se cobró** editables desde la misma tabla.
 - Editar y eliminar registros, con confirmación al eliminar.
 - Montos formateados como moneda.
